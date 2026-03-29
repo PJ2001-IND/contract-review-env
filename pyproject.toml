@@ -27,5 +27,10 @@ dev = [
     "httpx>=0.25.0",
 ]
 
-[tool.setuptools.packages.find]
-include = ["contract_review_env*"]
+[project.scripts]
+server = "contract_review_env.server.app:main"
+
+[tool.setuptools]
+include-package-data = true
+packages = ["contract_review_env", "contract_review_env.server"]
+package-dir = { "contract_review_env" = ".", "contract_review_env.server" = "server" }

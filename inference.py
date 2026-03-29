@@ -35,9 +35,9 @@ from graders import grade_episode
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 
-API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
-API_KEY = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
-MODEL_NAME = os.getenv("MODEL_NAME", "meta-llama/Llama-3.1-8B-Instruct")
+API_BASE_URL = os.getenv("API_BASE_URL")
+API_KEY = os.getenv("OPENAI_API_KEY") or os.getenv("HF_TOKEN") or os.getenv("API_KEY")
+MODEL_NAME = os.getenv("MODEL_NAME", "gpt-4o-mini")
 TEMPERATURE = 0.1
 MAX_TOKENS = 500
 
@@ -248,7 +248,10 @@ def main() -> None:
         print("Running with empty key — LLM calls may fail.")
 
     # Initialize OpenAI client
-    client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY or "")
+    client_kwargs = {"api_key": API_KEY or ""}
+    if API_BASE_URL:
+        client_kwargs["base_url"] = API_BASE_URL
+    client = OpenAI(**client_kwargs)
 
     # Initialize environment (direct, no server needed)
     env = ContractReviewEnvironment()

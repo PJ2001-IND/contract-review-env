@@ -1,7 +1,7 @@
 """
 FastAPI application for the Contract Review OpenEnv environment.
-Implements the full OpenEnv HTTP interface with stateful session management.
-Endpoints: /health, /reset, /step, /state, /tasks, /grader, /baseline, /docs, /ws
+Follows the official OpenEnv pattern: create_app(EnvClass, ActionType, ObsType).
+Adds required additional endpoints: /tasks, /grader, /baseline.
 """
 
 import os
@@ -12,62 +12,92 @@ import subprocess
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Optional, Dict, Any
-import json
-import uuid
+from typing import Optional
 
 from models import ContractAction, ContractObservation, ContractState
 from contracts import TASKS, get_task_ids
-from environment import ContractReviewEnvironment
+
+# Try to use OpenEnv's create_app, fall back to manual FastAPI setup
+try:
+    from openenv.core.env_server import create_app
+    from environment import ContractReviewEnvironment
+
+    # create_app takes the CLASS (factory), not instance
+    app = create_app(
+        ContractReviewEnvironment,
+        ContractAction,
+        ContractObservation,
+        env_name="contract_review_env",
+    )
+except ImportError:
+    # Fallback: create FastAPI app manually (for standalone use)
+    from environment import ContractReviewEnvironment
+
+    app = FastAPI(
+        title="Contract Review Environment",
+        description="OpenEnv environment for AI agent contract review and negotiation",
+        version="1.0.0",
+    )
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    # Global environment instance
+    _env = ContractReviewEnvironment()
+
+    class ResetRequest(BaseModel):
+        task_id: str = "clause_identification"
+        episode_id: Optional[str] = None
+        seed: Optional[int] = None
+
+    class StepRequest(BaseModel):
+        clause_id: str
+        action_type: str
+        severity: Optional[str] = None
+        reasoning: str = ""
+        suggested_text: Optional[str] = None
+
+    @app.get("/health")
+    async def health():
+        return {"status": "healthy", "environment": "contract_review_env", "version": "1.0.0"}
+
+    @app.post("/reset")
+    async def reset(request: ResetRequest = None):
+        if request is None:
+            request = ResetRequest()
+        obs = _env.reset(seed=request.seed, episode_id=request.episode_id, task_id=request.task_id)
+        return obs.model_dump()
+
+    @app.post("/step")
+    async def step(request: StepRequest):
+        action = ContractAction(
+            clause_id=request.clause_id,
+            action_type=request.action_type,
+            severity=request.severity,
+            reasoning=request.reasoning,
+            suggested_text=request.suggested_text,
+        )
+        obs = _env.step(action)
+        return obs.model_dump()
+
+    @app.get("/state")
+    async def state():
+        return _env.state.model_dump()
 
 
-# ── Create FastAPI app ──
+# ── Additional required endpoints (added on top of OpenEnv's standard ones) ──
 
-app = FastAPI(
-    title="Contract Review Environment",
-    description="OpenEnv environment for AI agent contract review and negotiation",
-    version="1.0.0",
-)
+# Get a reference to the environment for custom endpoints
+_custom_env = ContractReviewEnvironment()
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
-# ── Shared stateful environment for HTTP endpoints ──
-_env = ContractReviewEnvironment()
-
-
-# ── Request/Response models ──
-
-class ResetRequest(BaseModel):
-    task_id: str = "clause_identification"
-    episode_id: Optional[str] = None
-    seed: Optional[int] = None
-
-class ActionRequest(BaseModel):
-    clause_id: str
-    action_type: str
-    severity: Optional[str] = None
-    reasoning: str = ""
-    suggested_text: Optional[str] = None
-    metadata: Optional[Dict[str, Any]] = None
-
-class StepRequestBody(BaseModel):
-    action: Optional[ActionRequest] = None
-    # Also accept flat action fields
-    clause_id: Optional[str] = None
-    action_type: Optional[str] = None
-    severity: Optional[str] = None
-    reasoning: Optional[str] = None
-    suggested_text: Optional[str] = None
 
 class TaskInfo(BaseModel):
     id: str
@@ -75,152 +105,17 @@ class TaskInfo(BaseModel):
     description: str
     action_schema: dict
 
+
 class GraderResponse(BaseModel):
     task_id: str
     score: float
     episode_completed: bool
 
+
 class BaselineResponse(BaseModel):
     results: dict
     status: str
 
-
-# ── Core OpenEnv endpoints ──
-
-@app.get("/")
-async def root():
-    """Root endpoint with environment info."""
-    return {
-        "name": "contract_review_env",
-        "version": "1.0.0",
-        "description": "OpenEnv environment for contract review, risk assessment, and negotiation",
-        "endpoints": ["/health", "/reset", "/step", "/state", "/tasks", "/grader", "/baseline", "/docs"],
-    }
-
-
-@app.get("/health")
-async def health():
-    """Health check endpoint."""
-    return {"status": "healthy"}
-
-
-@app.post("/reset")
-async def reset(request: ResetRequest = None):
-    """Reset the environment and start a new episode."""
-    if request is None:
-        request = ResetRequest()
-    obs = _env.reset(
-        seed=request.seed,
-        episode_id=request.episode_id,
-        task_id=request.task_id,
-    )
-    return {
-        "observation": obs.model_dump(),
-        "reward": None,
-        "done": False,
-    }
-
-
-@app.post("/step")
-async def step(body: StepRequestBody):
-    """Execute an action on the current clause."""
-    if body.action is not None:
-        action = ContractAction(
-            clause_id=body.action.clause_id,
-            action_type=body.action.action_type,
-            severity=body.action.severity,
-            reasoning=body.action.reasoning,
-            suggested_text=body.action.suggested_text,
-        )
-    elif body.clause_id is not None:
-        action = ContractAction(
-            clause_id=body.clause_id,
-            action_type=body.action_type or "approve",
-            severity=body.severity,
-            reasoning=body.reasoning or "",
-            suggested_text=body.suggested_text,
-        )
-    else:
-        raise HTTPException(status_code=422, detail="Must provide action in request body")
-
-    obs = _env.step(action)
-    return {
-        "observation": obs.model_dump(),
-        "reward": obs.reward,
-        "done": obs.done,
-    }
-
-
-@app.get("/state")
-async def state():
-    """Get current environment state."""
-    return _env.state.model_dump()
-
-
-@app.get("/schema")
-async def schema():
-    """Return action and observation JSON schemas."""
-    return {
-        "action_schema": ContractAction.model_json_schema(),
-        "observation_schema": ContractObservation.model_json_schema(),
-        "state_schema": ContractState.model_json_schema(),
-    }
-
-
-# ── WebSocket endpoint (matches OpenEnv /ws pattern) ──
-
-@app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
-    """WebSocket endpoint for persistent session interaction."""
-    await websocket.accept()
-    ws_env = ContractReviewEnvironment()
-    try:
-        while True:
-            data = await websocket.receive_json()
-            msg_type = data.get("type", "")
-
-            if msg_type == "reset":
-                task_id = data.get("task_id", "clause_identification")
-                obs = ws_env.reset(task_id=task_id)
-                await websocket.send_json({
-                    "type": "reset_result",
-                    "observation": obs.model_dump(),
-                    "reward": None,
-                    "done": False,
-                })
-            elif msg_type == "step":
-                action_data = data.get("action", data)
-                action = ContractAction(
-                    clause_id=action_data.get("clause_id", ""),
-                    action_type=action_data.get("action_type", "approve"),
-                    severity=action_data.get("severity"),
-                    reasoning=action_data.get("reasoning", ""),
-                    suggested_text=action_data.get("suggested_text"),
-                )
-                obs = ws_env.step(action)
-                await websocket.send_json({
-                    "type": "step_result",
-                    "observation": obs.model_dump(),
-                    "reward": obs.reward,
-                    "done": obs.done,
-                })
-            elif msg_type == "state":
-                await websocket.send_json({
-                    "type": "state_result",
-                    **ws_env.state.model_dump(),
-                })
-            else:
-                await websocket.send_json({"error": f"Unknown type: {msg_type}"})
-    except WebSocketDisconnect:
-        pass
-    except Exception as e:
-        try:
-            await websocket.send_json({"error": str(e)})
-        except Exception:
-            pass
-
-
-# ── Additional required endpoints ──
 
 @app.get("/tasks")
 async def tasks():
@@ -240,8 +135,8 @@ async def tasks():
 @app.get("/grader")
 async def grader():
     """Returns grader score after an episode is completed."""
-    score = _env.get_last_grader_score()
-    task_id = _env.state.task_id
+    score = _custom_env.get_last_grader_score()
+    task_id = _custom_env.state.task_id
     if score is None:
         return GraderResponse(task_id=task_id or "none", score=0.0, episode_completed=False).model_dump()
     return GraderResponse(task_id=task_id, score=score, episode_completed=True).model_dump()
@@ -253,6 +148,7 @@ async def baseline():
     try:
         script_paths = [
             os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "inference.py"),
+            os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "inference.py"),
             "/app/inference.py",
         ]
         script_path = next((p for p in script_paths if os.path.exists(p)), None)
@@ -289,7 +185,7 @@ async def baseline():
         return BaselineResponse(results={"error": str(e)}, status="error").model_dump()
 
 
-# ── Entry point ──
+# ── Entry point ───────────────────────────────────────────────────────────────
 
 def main():
     import uvicorn
