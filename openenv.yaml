@@ -1,0 +1,28 @@
+name: contract_review_env
+description: "AI agent environment for contract review, risk assessment, and negotiation. Agents analyze software/business contracts, identify problematic clauses, classify risk severity, and suggest legally sound amendments."
+version: "1.0.0"
+author: "praasukjain"
+framework: "openenv"
+entry_point: "server.app:app"
+tasks:
+  - id: clause_identification
+    difficulty: easy
+    description: "Identify problematic clauses in a simple SaaS agreement (5 clauses, 3 issues)"
+  - id: risk_assessment
+    difficulty: medium
+    description: "Assess risk severity in an enterprise software license (10 clauses, 5 issues)"
+  - id: negotiation
+    difficulty: hard
+    description: "Negotiate amendments in a complex vendor agreement (15 clauses, 7 issues)"
+models:
+  action: "models.ContractAction"
+  observation: "models.ContractObservation"
+  state: "models.ContractState"
+endpoints:
+  - /health
+  - /reset
+  - /step
+  - /state
+  - /tasks
+  - /grader
+  - /baseline
