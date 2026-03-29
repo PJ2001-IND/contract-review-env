@@ -1,3 +1,14 @@
+---
+title: Contract Review Environment
+emoji: 📝
+colorFrom: blue
+colorTo: green
+sdk: docker
+app_port: 7860
+pinned: false
+license: mit
+---
+
 # Contract Review Environment — OpenEnv
 
 > **An AI agent environment for contract review, risk assessment, and negotiation.**
