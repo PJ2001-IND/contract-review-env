@@ -1,0 +1,108 @@
+============================================================
+CONTRACT REVIEW ENVIRONMENT — BASELINE INFERENCE
+============================================================
+API_BASE_URL: None
+MODEL_NAME:   gpt-4o-mini
+API_KEY:      ***iekA
+
+
+============================================================
+TASK: clause_identification
+============================================================
+Contract: SaaS Subscription Agreement – CloudSync Pro
+Clauses: 5
+Task: Review this SaaS Subscription Agreement. For each clause, decide whether to 'app...
+
+  Step 1: Reviewing clause c1 — 'Service Description'
+    [ERROR] LLM call failed: Error code: 429 - {'error': {'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.', 'type': 'insufficient_quota', 'param': None, 'code': 'insufficient_quota'}}
+    Action: approve
+    Reward: -0.0200
+    Message: Clause approved — looks standard. 4 clause(s) remaining. Next: 'Liability'.
+  Step 2: Reviewing clause c2 — 'Liability'
+    [ERROR] LLM call failed: Error code: 429 - {'error': {'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.', 'type': 'insufficient_quota', 'param': None, 'code': 'insufficient_quota'}}
+    Action: approve
+    Reward: -0.0200
+    Message: Clause approved. 3 clause(s) remaining. Next: 'Term and Renewal'.
+  Step 3: Reviewing clause c3 — 'Term and Renewal'
+    [ERROR] LLM call failed: Error code: 429 - {'error': {'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.', 'type': 'insufficient_quota', 'param': None, 'code': 'insufficient_quota'}}
+    Action: approve
+    Reward: -0.0200
+    Message: Clause approved. 2 clause(s) remaining. Next: 'Data Privacy'.
+  Step 4: Reviewing clause c4 — 'Data Privacy'
+    [ERROR] LLM call failed: Error code: 429 - {'error': {'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.', 'type': 'insufficient_quota', 'param': None, 'code': 'insufficient_quota'}}
+    Action: approve
+    Reward: -0.0200
+    Message: Clause approved — looks standard. 1 clause(s) remaining. Next: 'Intellectual Property'.
+  Step 5: Reviewing clause c5 — 'Intellectual Property'
+    [ERROR] LLM call failed: Error code: 429 - {'error': {'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.', 'type': 'insufficient_quota', 'param': None, 'code': 'insufficient_quota'}}
+    Action: approve
+    Reward: +0.0000
+    Message: Clause approved. All clauses reviewed! Final grader score: 0.0000. Issues found: 0/3. False positive
+
+  SCORE — clause_identification: 0.0000
+
+============================================================
+TASK: risk_assessment
+============================================================
+Contract: Enterprise Software License Agreement – DataVault Analytics
+Clauses: 10
+Task: Review this Enterprise Software License Agreement. For each clause, determine if...
+
+  Step 1: Reviewing clause c1 — 'License Grant'
+    [ERROR] LLM call failed: Error code: 429 - {'error': {'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.', 'type': 'insufficient_quota', 'param': None, 'code': 'insufficient_quota'}}
+    Action: approve
+    Reward: -0.0200
+    Message: Clause approved — looks standard. 9 clause(s) remaining. Next: 'Fees and Payment'.
+  Step 2: Reviewing clause c2 — 'Fees and Payment'
+Traceback (most recent call last):
+  File "/Users/praasukjain/Downloads/HACKATHON/contract_review_env/.venv/lib/python3.13/site-packages/openai/_base_client.py", line 1050, in request
+    response.raise_for_status()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/Users/praasukjain/Downloads/HACKATHON/contract_review_env/.venv/lib/python3.13/site-packages/httpx/_models.py", line 829, in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+httpx.HTTPStatusError: Client error '429 Too Many Requests' for url 'https://api.openai.com/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/429
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/praasukjain/Downloads/HACKATHON/contract_review_env/inference.py", line 283, in <module>
+    main()
+    ~~~~^^
+  File "/Users/praasukjain/Downloads/HACKATHON/contract_review_env/inference.py", line 265, in main
+    score = run_task(client, env, task_id)
+  File "/Users/praasukjain/Downloads/HACKATHON/contract_review_env/inference.py", line 197, in run_task
+    completion = client.chat.completions.create(
+        model=MODEL_NAME,
+    ...<6 lines>...
+        stream=False,
+    )
+  File "/Users/praasukjain/Downloads/HACKATHON/contract_review_env/.venv/lib/python3.13/site-packages/openai/_utils/_utils.py", line 286, in wrapper
+    return func(*args, **kwargs)
+  File "/Users/praasukjain/Downloads/HACKATHON/contract_review_env/.venv/lib/python3.13/site-packages/openai/resources/chat/completions/completions.py", line 1211, in create
+    return self._post(
+           ~~~~~~~~~~^
+        "/chat/completions",
+        ^^^^^^^^^^^^^^^^^^^^
+    ...<47 lines>...
+        stream_cls=Stream[ChatCompletionChunk],
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/praasukjain/Downloads/HACKATHON/contract_review_env/.venv/lib/python3.13/site-packages/openai/_base_client.py", line 1297, in post
+    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))
+                           ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/praasukjain/Downloads/HACKATHON/contract_review_env/.venv/lib/python3.13/site-packages/openai/_base_client.py", line 1056, in request
+    self._sleep_for_retry(
+    ~~~~~~~~~~~~~~~~~~~~~^
+        retries_taken=retries_taken,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        response=response,
+        ^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/praasukjain/Downloads/HACKATHON/contract_review_env/.venv/lib/python3.13/site-packages/openai/_base_client.py", line 1096, in _sleep_for_retry
+    time.sleep(timeout)
+    ~~~~~~~~~~^^^^^^^^^
+KeyboardInterrupt
