@@ -102,8 +102,8 @@ cd server
 uvicorn app:app --host 0.0.0.0 --port 7860
 
 # Or with Docker
-docker build -t contract-review-env -f server/Dockerfile .
-docker run -p 7860:7860 contract-review-env
+docker build -t contract-review-env .
+docker run -p 8990:7860 contract-review-env
 ```
 
 ### Run Inference
