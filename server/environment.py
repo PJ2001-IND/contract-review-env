@@ -33,6 +33,10 @@ class ContractReviewEnvironment(Environment):
     """
 
     SUPPORTS_CONCURRENT_SESSIONS = True
+    
+    # Store the last completed score globally for the stateless /grader HTTP endpoint
+    _global_last_grader_score: Optional[float] = None
+    _global_last_task_id: Optional[str] = None
 
     # ── Reward shaping constants ──────────────────────────────────────────
     REWARD_CORRECT_FLAG = 0.15
@@ -200,6 +204,8 @@ class ContractReviewEnvironment(Environment):
             self._last_grader_score = grade_episode(
                 self._state.task_id, self._reviews, self._ground_truth
             )
+            ContractReviewEnvironment._global_last_grader_score = self._last_grader_score
+            ContractReviewEnvironment._global_last_task_id = self._state.task_id
 
             final_reward = max(0.0, min(1.0, self._last_grader_score))
 
@@ -252,8 +258,8 @@ class ContractReviewEnvironment(Environment):
         return self._state
 
     def get_last_grader_score(self) -> Optional[float]:
-        """Returns the grader score from the most recently completed episode."""
-        return self._last_grader_score
+        """Returns the grader score from the most recently completed episode across any session."""
+        return ContractReviewEnvironment._global_last_grader_score
 
     def _format_full_contract(self) -> str:
         """Format the entire contract as readable text."""

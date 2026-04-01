@@ -95,10 +95,6 @@ except ImportError:
 
 # ── Additional required endpoints (added on top of OpenEnv's standard ones) ──
 
-# Get a reference to the environment for custom endpoints
-_custom_env = ContractReviewEnvironment()
-
-
 class TaskInfo(BaseModel):
     id: str
     difficulty: str
@@ -134,9 +130,9 @@ async def tasks():
 
 @app.get("/grader")
 async def grader():
-    """Returns grader score after an episode is completed."""
-    score = _custom_env.get_last_grader_score()
-    task_id = _custom_env.state.task_id
+    """Returns grader score from the last globally completed episode."""
+    score = ContractReviewEnvironment._global_last_grader_score
+    task_id = ContractReviewEnvironment._global_last_task_id
     if score is None:
         return GraderResponse(task_id=task_id or "none", score=0.0, episode_completed=False).model_dump()
     return GraderResponse(task_id=task_id, score=score, episode_completed=True).model_dump()
