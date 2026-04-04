@@ -97,13 +97,22 @@ pip install -e .
 ### Run Locally
 
 ```bash
-# Start the server
-cd server
-uvicorn app:app --host 0.0.0.0 --port 7860
+# Start the server (from repo root)
+uv run uvicorn server.app:app --host 0.0.0.0 --port 7860
+
+# Or with plain pip
+uvicorn server.app:app --host 0.0.0.0 --port 7860
 
 # Or with Docker
 docker build -t contract-review-env .
 docker run -p 8990:7860 contract-review-env
+```
+
+### Run Tests
+
+```bash
+# Verify all 33 API tests pass
+uv run python run_tests.py
 ```
 
 ### Run Inference
@@ -120,13 +129,14 @@ python inference.py
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/health` | GET | Health check |
+| `/health` | GET | Health check — returns `{"status": "healthy"}` |
 | `/reset` | POST | Start new episode (body: `{"task_id": "clause_identification"}`) |
 | `/step` | POST | Submit action for current clause |
 | `/state` | GET | Get current environment state |
-| `/tasks` | GET | List all tasks with action schema |
-| `/grader` | GET | Get grader score after episode |
-| `/baseline` | POST | Run inference and return scores |
+| `/tasks` | GET | List all tasks with full action schema |
+| `/grader` | GET | Get grader score after episode (0.0–1.0) |
+| `/baseline` | POST | Run LLM inference and return scores |
+| `/docs` | GET | Interactive Swagger UI |
 
 ## Evaluation Criteria
 
