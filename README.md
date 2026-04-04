@@ -244,6 +244,7 @@ contract_review_env/
 **Praasuk Jain**
 - GitHub: [@PJ2001-IND](https://github.com/PJ2001-IND)
 - Hugging Face: [@praasukjain2001](https://huggingface.co/praasukjain2001)
+- LinkedIn: [praasuk-jain](https://www.linkedin.com/in/praasuk-jain-425b6b1a3/)
 
 ---
 
