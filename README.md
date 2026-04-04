@@ -4,21 +4,26 @@ emoji: 📝
 colorFrom: blue
 colorTo: green
 sdk: docker
-pinned: false
 app_port: 7860
-base_path: /web
-tags:
-  - openenv
+pinned: false
 license: mit
 ---
 
-# Contract Review Environment — OpenEnv
+# 📝 Contract Review Environment — OpenEnv
 
-> **An AI agent environment for contract review, risk assessment, and negotiation.**
+![Python](https://img.shields.io/badge/Python-3.10+-blue?style=flat-square&logo=python)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.104+-green?style=flat-square&logo=fastapi)
+![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?style=flat-square&logo=docker)
+![OpenEnv](https://img.shields.io/badge/OpenEnv-Compliant-purple?style=flat-square)
+![HuggingFace](https://img.shields.io/badge/HuggingFace-Space-yellow?style=flat-square&logo=huggingface)
+![Tests](https://img.shields.io/badge/Tests-33%2F33%20Passing-brightgreen?style=flat-square)
+![License](https://img.shields.io/badge/License-MIT-lightgrey?style=flat-square)
 
-Built for the [Meta PyTorch OpenEnv Hackathon](https://www.scaler.com/school-of-technology/meta-pytorch-hackathon/).
+> **An AI agent environment for contract review, risk assessment, and legal clause negotiation** — built for the [Meta PyTorch OpenEnv Hackathon](https://www.scaler.com/school-of-technology/meta-pytorch-hackathon/).
 
-## Overview
+---
+
+## 📌 Overview
 
 This environment simulates a real-world contract review task where an AI agent must:
 
@@ -28,55 +33,23 @@ This environment simulates a real-world contract review task where an AI agent m
 4. **Suggest** specific amendments with better wording
 5. **Negotiate** terms while considering clause interdependencies
 
-## Quick Start
+The environment is fully compliant with the **OpenEnv specification** and exposes a standard HTTP + WebSocket API for agent interaction, deterministic graders, and partial reward shaping throughout each episode.
 
-The simplest way to use the Contract Review environment is through the `ContractReviewEnv` client class:
+---
 
-```python
-from contract_review_env import ContractAction, ContractReviewEnv
-
-try:
-    # Create environment from Docker image
-    env = ContractReviewEnv.from_docker_image("contract-review-env:latest")
-
-    # Reset with a specific task
-    result = env.reset(task_id="clause_identification")
-    print(f"Contract: {result.observation.contract_title}")
-    print(f"First Clause: {result.observation.current_clause_title}")
-
-    # Agent reviews clauses step by step
-    while not result.done:
-        action = ContractAction(
-            clause_id=result.observation.current_clause_id,
-            action_type="flag_risk",
-            severity="critical",
-            reasoning="This clause exposes the subscriber to unlimited liability.",
-            suggested_text=None
-        )
-        result = env.step(action)
-        print(f"Reward: {result.reward}")
-
-    print(f"Final Score: {result.observation.message}")
-
-finally:
-    env.close()
-```
-
-That's it! The `ContractReviewEnv.from_docker_image()` method handles:
-- Starting the Docker container
-- Waiting for the server to be ready
-- Connecting to the environment
-- Container cleanup when you call `close()`
-
-## Tasks
+## 🎯 Tasks
 
 | Task ID | Difficulty | Contract | Clauses | Issues | Description |
 |---------|-----------|----------|---------|--------|-------------|
-| `clause_identification` | Easy | SaaS Agreement | 5 | 3 | Spot obvious red flags (unlimited liability, auto-renewal, IP transfer) |
-| `risk_assessment` | Medium | Enterprise License | 10 | 5 | Classify severity correctly, provide reasoning |
-| `negotiation` | Hard | Vendor Agreement | 15 | 7 | Suggest legally sound amendments, handle interdependencies |
+| `clause_identification` | 🟢 Easy | SaaS Agreement | 5 | 3 | Spot obvious red flags (unlimited liability, auto-renewal, IP transfer) |
+| `risk_assessment` | 🟡 Medium | Enterprise License | 10 | 5 | Classify severity correctly, provide reasoning |
+| `negotiation` | 🔴 Hard | Vendor Agreement | 15 | 7 | Suggest legally sound amendments, handle interdependencies |
 
-## Action Space
+---
+
+## 🤖 Action & Observation Space
+
+### Action Space
 
 ```python
 class ContractAction:
@@ -87,7 +60,7 @@ class ContractAction:
     suggested_text: str | None  # Proposed amendment (for suggest_amendment)
 ```
 
-## Observation Space
+### Observation Space
 
 ```python
 class ContractObservation:
@@ -106,34 +79,38 @@ class ContractObservation:
     reward: float | None        # Reward for the step
 ```
 
-## Reward Function
+---
 
-The reward function provides **partial progress signals** throughout the episode:
+## 🏆 Reward Function
+
+The reward function provides **partial progress signals** throughout the episode — not just at the end:
 
 | Signal | Value | Condition |
 |--------|-------|-----------|
-| Correct flag | +0.15 | Identified a genuinely problematic clause |
-| Correct severity | +0.10 | Severity matches ground truth |
-| Good amendment | +0.10 | Suggested text addresses key concerns |
-| False positive | −0.05 | Flagged a clean clause as problematic |
-| Time pressure | −0.02 | Per step (prevents infinite loops) |
-| Completion bonus | +0.20 | Reviewed all clauses |
+| ✅ Correct flag | `+0.15` | Identified a genuinely problematic clause |
+| ✅ Correct severity | `+0.10` | Severity matches ground truth |
+| ✅ Good amendment | `+0.10` | Suggested text addresses key concerns |
+| ❌ False positive | `−0.05` | Flagged a clean clause as problematic |
+| ⏱️ Time pressure | `−0.02` | Per step (prevents infinite loops) |
+| 🎉 Completion bonus | `+0.20` | Reviewed all clauses |
 
-Final score is determined by the task-specific **grader** (0.0–1.0).
+> 📊 Final score is determined by the task-specific **grader** returning a float between `0.0` and `1.0`.
 
-## Setup
+---
+
+## 🚀 Getting Started
 
 ### Prerequisites
 
 - Python 3.10+
 - Docker (for containerized deployment)
-- Hugging Face CLI (`pip install huggingface-hub`)
-- OpenAI API key or HF Token
+- OpenAI API key **or** Hugging Face Token (for running inference)
 
 ### Install
 
 ```bash
-cd contract_review_env
+git clone https://github.com/PJ2001-IND/contract-review-env.git
+cd contract-review-env
 pip install -e .
 ```
 
@@ -158,7 +135,7 @@ docker run -p 8990:7860 contract-review-env
 uv run python run_tests.py
 ```
 
-### Run Inference
+### Run Inference (AI Agent)
 
 ```bash
 export API_BASE_URL="https://router.huggingface.co/v1"
@@ -168,93 +145,31 @@ export HF_TOKEN="your_token_here"
 python inference.py
 ```
 
-## Deploying to Hugging Face Spaces
-
-You can deploy your OpenEnv environment to Hugging Face Spaces using the `openenv push` command:
+### Play Interactively (Human Demo)
 
 ```bash
-# From the environment directory (where openenv.yaml is located)
-openenv push
-
-# Or specify options
-openenv push --namespace my-org --private
+# Play the role of the AI agent yourself in the terminal
+uv run python play_demo.py
 ```
 
-The `openenv push` command will:
-1. Validate that the directory is an OpenEnv environment (checks for `openenv.yaml`)
-2. Prepare a custom build for Hugging Face Docker space (enables web interface)
-3. Upload to Hugging Face (ensuring you're logged in)
+---
 
-After deployment, your space will be available at:
-`https://huggingface.co/spaces/<repo-id>`
-
-The deployed space includes:
-- **Web Interface** at `/web` — Interactive UI for exploring the environment
-- **API Documentation** at `/docs` — Full OpenAPI/Swagger interface
-- **Health Check** at `/health` — Container health monitoring
-- **WebSocket** at `/ws` — Persistent session endpoint for low-latency interactions
-
-## API Endpoints
+## 🔌 API Endpoints
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/health` | GET | Health check — returns `{"status": "healthy"}` |
-| `/reset` | POST | Start new episode (body: `{"task_id": "clause_identification"}`) |
-| `/step` | POST | Submit action for current clause |
-| `/state` | GET | Get current environment state |
-| `/tasks` | GET | List all tasks with full action schema |
-| `/grader` | GET | Get grader score after episode (0.0–1.0) |
-| `/baseline` | POST | Run LLM inference and return scores |
-| `/docs` | GET | Interactive Swagger UI |
+| `/health` | `GET` | Health check — returns `{"status": "healthy"}` |
+| `/reset` | `POST` | Start new episode (body: `{"task_id": "clause_identification"}`) |
+| `/step` | `POST` | Submit action for current clause |
+| `/state` | `GET` | Get current environment state |
+| `/tasks` | `GET` | List all tasks with full action schema |
+| `/grader` | `GET` | Get grader score after episode (0.0–1.0) |
+| `/baseline` | `POST` | Run LLM inference and return scores |
+| `/docs` | `GET` | Interactive Swagger UI |
 
-## Advanced Usage
+---
 
-### Connecting to an Existing Server
-
-If you already have a Contract Review environment server running, you can connect directly:
-
-```python
-from contract_review_env import ContractReviewEnv
-
-# Connect to existing server
-env = ContractReviewEnv(base_url="<ENV_HTTP_URL_HERE>")
-
-# Use as normal
-result = env.reset(task_id="clause_identification")
-result = env.step(ContractAction(
-    clause_id="c1",
-    action_type="approve",
-    reasoning="Standard service description clause."
-))
-```
-
-### Using the Context Manager
-
-```python
-from contract_review_env import ContractAction, ContractReviewEnv
-
-with ContractReviewEnv(base_url="http://localhost:7860") as env:
-    result = env.reset(task_id="risk_assessment")
-    while not result.done:
-        # Agent logic here
-        result = env.step(ContractAction(...))
-```
-
-### Concurrent WebSocket Sessions
-
-The server supports multiple concurrent WebSocket connections:
-
-```python
-# In server/app.py - factory mode for concurrent sessions
-app = create_app(
-    ContractReviewEnvironment,   # Pass class, not instance
-    ContractAction,
-    ContractObservation,
-    max_concurrent_envs=4,       # Allow 4 concurrent sessions
-)
-```
-
-## Project Structure
+## 📁 Project Structure
 
 ```
 contract_review_env/
@@ -265,9 +180,9 @@ contract_review_env/
 ├── Dockerfile             # Main container image (port 7860)
 ├── openenv.yaml           # OpenEnv manifest
 ├── pyproject.toml         # Project metadata and dependencies
-├── uv.lock                # Locked dependencies (generated)
+├── uv.lock                # Locked dependencies
 ├── client.py              # ContractReviewEnv client
-├── models.py              # Action and Observation models
+├── models.py              # Action and Observation Pydantic models
 ├── contracts.py           # 3 synthetic contracts with embedded issues
 ├── graders.py             # Deterministic graders (0.0–1.0)
 ├── inference.py           # Baseline LLM agent script
@@ -281,14 +196,61 @@ contract_review_env/
     └── Dockerfile         # Server-only container
 ```
 
-## Evaluation Criteria
+---
 
-- **Real-world utility (30%)**: Contract review is a $40B+ industry
-- **Task & grader quality (25%)**: 3 deterministic graders with clear difficulty progression
-- **Environment design (20%)**: Clean state management, partial-progress rewards
-- **Code quality (15%)**: Typed Pydantic models, OpenEnv spec compliant
-- **Creativity (10%)**: Novel legal/contract domain for OpenEnv
+## 📊 Evaluation Criteria
 
-## License
+| Criteria | Weight | Our Implementation |
+|----------|--------|-------------------|
+| **Real-world utility** | 30% | Contract review is a $40B+ legal industry use case |
+| **Task & grader quality** | 25% | 3 deterministic graders with clear difficulty progression |
+| **Environment design** | 20% | Clean state management, partial-progress rewards |
+| **Code quality** | 15% | Typed Pydantic models, fully OpenEnv spec compliant |
+| **Creativity** | 10% | Novel legal/contract domain, first of its kind in OpenEnv |
+
+---
+
+## 🛠️ Tech Stack
+
+| Tool | Purpose |
+|------|---------|
+| Python 3.10+ | Core programming language |
+| FastAPI | HTTP API server and WebSocket endpoint |
+| Pydantic v2 | Strict action/observation schema validation |
+| Uvicorn | High-performance ASGI web server |
+| OpenEnv Core | Base environment interface and `create_app` factory |
+| OpenAI SDK | Universal LLM client (works with OpenAI and HF models) |
+| Docker | Containerized deployment for Hugging Face Spaces |
+| uv | Ultra-fast Python package manager |
+
+---
+
+## ⚠️ Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `API_BASE_URL` | Optional | LLM endpoint (e.g. `https://router.huggingface.co/v1`) |
+| `MODEL_NAME` | Optional | Model identifier (default: `gpt-4o-mini`) |
+| `OPENAI_API_KEY` | Optional | OpenAI API key for inference |
+| `HF_TOKEN` | Optional | Hugging Face token (alternative to OpenAI key) |
+| `PORT` | Optional | Server port (default: `7860`) |
+
+> 🔐 **Security:** Never hardcode API keys. Always use environment variables or Hugging Face Secrets.
+
+---
+
+## 👤 Author
+
+**Praasuk Jain**
+- GitHub: [@PJ2001-IND](https://github.com/PJ2001-IND)
+- Hugging Face: [@praasukjain2001](https://huggingface.co/praasukjain2001)
+
+---
+
+## 📄 License
 
 MIT
+
+---
+
+> ⭐ If you found this project useful, consider giving it a star!
