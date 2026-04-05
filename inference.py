@@ -35,9 +35,11 @@ from graders import grade_episode
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 
-API_BASE_URL = os.getenv("API_BASE_URL")
-API_KEY = os.getenv("OPENAI_API_KEY") or os.getenv("HF_TOKEN") or os.getenv("API_KEY")
-MODEL_NAME = os.getenv("MODEL_NAME", "gpt-4o-mini")
+API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
+MODEL_NAME = os.getenv("MODEL_NAME", "meta-llama/Llama-3.1-8B-Instruct")
+HF_TOKEN = os.getenv("HF_TOKEN")
+LOCAL_IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME")
+
 TEMPERATURE = 0.1
 MAX_TOKENS = 500
 
@@ -163,21 +165,16 @@ def run_task(
     task_id: str,
 ) -> float:
     """Run a single task and return the grader score."""
-    print(f"\n{'='*60}")
-    print(f"TASK: {task_id}")
-    print(f"{'='*60}")
+    print(f"START — {task_id}")
 
     # Reset environment
     obs = env.reset(task_id=task_id)
-    print(f"Contract: {obs.contract_title}")
-    print(f"Clauses: {obs.total_clauses}")
-    print(f"Task: {obs.task_description[:80]}...")
-    print()
 
     step = 0
     while not obs.done:
         step += 1
-        print(f"  Step {step}: Reviewing clause {obs.current_clause_id} — '{obs.current_clause_title}'")
+        if DEBUG:
+            print(f"  [DEBUG] Reviewing clause {obs.current_clause_id} — '{obs.current_clause_title}'")
 
         # Build prompt
         user_prompt = build_user_prompt(
@@ -211,25 +208,23 @@ def run_task(
 
         # Parse action
         action = parse_llm_response(response_text, obs.current_clause_id)
-        print(f"    Action: {action.action_type}", end="")
-        if action.severity:
-            print(f" (severity: {action.severity})", end="")
-        print()
-
         if DEBUG:
             print(f"    Reasoning: {action.reasoning[:80]}...")
 
         # Step environment
         obs = env.step(action)
 
+        # Print formatted step
+        step_str = f"STEP — Action: {action.action_type}"
+        if action.severity:
+            step_str += f" (severity: {action.severity})"
         if obs.reward is not None:
-            print(f"    Reward: {obs.reward:+.4f}")
-
-        print(f"    Message: {obs.message[:100]}")
+            step_str += f", Reward: {obs.reward:+.4f}"
+        print(step_str)
 
     # Get grader score
     grader_score = env.get_last_grader_score()
-    print(f"\n  SCORE — {task_id}: {grader_score:.4f}")
+    print(f"END — {task_id} score: {grader_score:.4f}")
     return grader_score
 
 
@@ -240,15 +235,16 @@ def main() -> None:
     print("=" * 60)
     print(f"API_BASE_URL: {API_BASE_URL}")
     print(f"MODEL_NAME:   {MODEL_NAME}")
-    print(f"API_KEY:      {'***' + API_KEY[-4:] if API_KEY else 'NOT SET'}")
+    print(f"HF_TOKEN:     {'***' + HF_TOKEN[-4:] if HF_TOKEN else 'NOT SET'}")
+    if LOCAL_IMAGE_NAME:
+        print(f"LOCAL_IMAGE_NAME: {LOCAL_IMAGE_NAME}")
     print()
 
-    if not API_KEY:
-        print("WARNING: No API key set. Set HF_TOKEN or API_KEY environment variable.")
-        print("Running with empty key — LLM calls may fail.")
+    if not HF_TOKEN:
+        print("WARNING: No HF_TOKEN set. Running with empty key — LLM calls may fail.")
 
     # Initialize OpenAI client
-    client_kwargs = {"api_key": API_KEY or ""}
+    client_kwargs = {"api_key": HF_TOKEN or "dummy"}
     if API_BASE_URL:
         client_kwargs["base_url"] = API_BASE_URL
     client = OpenAI(**client_kwargs)
