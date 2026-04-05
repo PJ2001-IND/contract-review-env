@@ -127,13 +127,6 @@ docker build -t contract-review-env .
 docker run -p 8990:7860 contract-review-env
 ```
 
-### Run Tests
-
-```bash
-# Verify all 33 API tests pass
-uv run python run_tests.py
-```
-
 ### Run Inference (AI Agent)
 
 ```bash
@@ -186,7 +179,6 @@ contract_review_env/
 ├── graders.py             # Deterministic graders (0.0–1.0)
 ├── inference.py           # Baseline LLM agent script
 ├── play_demo.py           # Interactive terminal demo (human player)
-├── run_tests.py           # Comprehensive API test suite (33 tests)
 └── server/
     ├── __init__.py        # Server module exports
     ├── environment.py     # Core environment logic
