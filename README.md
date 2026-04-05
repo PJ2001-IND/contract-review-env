@@ -16,7 +16,6 @@ license: mit
 ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?style=flat-square&logo=docker)
 ![OpenEnv](https://img.shields.io/badge/OpenEnv-Compliant-purple?style=flat-square)
 ![HuggingFace](https://img.shields.io/badge/HuggingFace-Space-yellow?style=flat-square&logo=huggingface)
-![Tests](https://img.shields.io/badge/Tests-33%2F33%20Passing-brightgreen?style=flat-square)
 ![License](https://img.shields.io/badge/License-MIT-lightgrey?style=flat-square)
 
 > **An AI agent environment for contract review, risk assessment, and legal clause negotiation** — built for the [Meta PyTorch OpenEnv Hackathon](https://www.scaler.com/school-of-technology/meta-pytorch-hackathon/).
