@@ -159,18 +159,29 @@ def parse_llm_response(response_text: str, clause_id: str) -> ContractAction:
             )
 
 
+def log_start(task: str, env: str, model: str) -> None:
+    print(f"[START] {json.dumps({'task': task, 'env': env, 'model': model})}", flush=True)
+
+def log_step(step: int, action: Any, reward: float, done: bool, error: Optional[str] = None) -> None:
+    print(f"[STEP] {json.dumps({'step': step, 'action': action, 'reward': reward, 'done': done, 'error': error})}", flush=True)
+
+def log_end(success: bool, steps: int, score: float, rewards: List[float]) -> None:
+    print(f"[END] {json.dumps({'success': success, 'steps': steps, 'score': score, 'rewards': rewards})}", flush=True)
+
+
 def run_task(
     client: OpenAI,
     env: ContractReviewEnvironment,
     task_id: str,
 ) -> float:
     """Run a single task and return the grader score."""
-    print(f"START — {task_id}")
+    log_start(task=task_id, env="contract_review_env", model=MODEL_NAME)
 
     # Reset environment
     obs = env.reset(task_id=task_id)
 
     step = 0
+    rewards = []
     while not obs.done:
         step += 1
         if DEBUG:
@@ -202,45 +213,48 @@ def run_task(
                 stream=False,
             )
             response_text = completion.choices[0].message.content or ""
+            error_msg = None
         except Exception as exc:
-            print(f"    [ERROR] LLM call failed: {exc}")
+            error_msg = str(exc)
             response_text = ""
 
         # Parse action
         action = parse_llm_response(response_text, obs.current_clause_id)
-        if DEBUG:
-            print(f"    Reasoning: {action.reasoning[:80]}...")
 
         # Step environment
         obs = env.step(action)
+        reward = obs.reward if obs.reward is not None else 0.0
+        rewards.append(reward)
 
-        # Print formatted step
-        step_str = f"STEP — Action: {action.action_type}"
-        if action.severity:
-            step_str += f" (severity: {action.severity})"
-        if obs.reward is not None:
-            step_str += f", Reward: {obs.reward:+.4f}"
-        print(step_str)
+        log_step(
+            step=step, 
+            action=action.model_dump() if hasattr(action, 'model_dump') else action.dict(), 
+            reward=reward, 
+            done=obs.done, 
+            error=error_msg
+        )
 
     # Get grader score
     grader_score = env.get_last_grader_score()
-    print(f"END — {task_id} score: {grader_score:.4f}")
+    success = grader_score >= 0.5
+    log_end(success=success, steps=step, score=grader_score, rewards=rewards)
     return grader_score
 
 
 def main() -> None:
     """Run inference on all 3 tasks and report scores."""
-    print("=" * 60)
-    print("CONTRACT REVIEW ENVIRONMENT — BASELINE INFERENCE")
-    print("=" * 60)
-    print(f"API_BASE_URL: {API_BASE_URL}")
-    print(f"MODEL_NAME:   {MODEL_NAME}")
-    print(f"HF_TOKEN:     {'***' + HF_TOKEN[-4:] if HF_TOKEN else 'NOT SET'}")
-    if LOCAL_IMAGE_NAME:
-        print(f"LOCAL_IMAGE_NAME: {LOCAL_IMAGE_NAME}")
-    print()
+    if DEBUG:
+        print("=" * 60)
+        print("CONTRACT REVIEW ENVIRONMENT — BASELINE INFERENCE")
+        print("=" * 60)
+        print(f"API_BASE_URL: {API_BASE_URL}")
+        print(f"MODEL_NAME:   {MODEL_NAME}")
+        print(f"HF_TOKEN:     {'***' + HF_TOKEN[-4:] if HF_TOKEN else 'NOT SET'}")
+        if LOCAL_IMAGE_NAME:
+            print(f"LOCAL_IMAGE_NAME: {LOCAL_IMAGE_NAME}")
+        print()
 
-    if not HF_TOKEN:
+    if not HF_TOKEN and DEBUG:
         print("WARNING: No HF_TOKEN set. Running with empty key — LLM calls may fail.")
 
     # Initialize OpenAI client
@@ -261,18 +275,20 @@ def main() -> None:
             score = run_task(client, env, task_id)
             scores[task_id] = score
         except Exception as exc:
-            print(f"\n  [ERROR] Task {task_id} failed: {exc}")
+            if DEBUG:
+                print(f"\n  [ERROR] Task {task_id} failed: {exc}")
             scores[task_id] = 0.0
 
     # Summary
-    print("\n" + "=" * 60)
-    print("BASELINE RESULTS SUMMARY")
-    print("=" * 60)
-    for task_id, score in scores.items():
-        print(f"  SCORE - {task_id}: {score:.4f}")
-    avg = sum(scores.values()) / len(scores) if scores else 0.0
-    print(f"\n  AVERAGE SCORE: {avg:.4f}")
-    print("=" * 60)
+    if DEBUG:
+        print("\n" + "=" * 60)
+        print("BASELINE RESULTS SUMMARY")
+        print("=" * 60)
+        for task_id, score in scores.items():
+            print(f"  SCORE - {task_id}: {score:.4f}")
+        avg = sum(scores.values()) / len(scores) if scores else 0.0
+        print(f"\n  AVERAGE SCORE: {avg:.4f}")
+        print("=" * 60)
 
 
 if __name__ == "__main__":
