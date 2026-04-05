@@ -113,6 +113,14 @@ class BaselineResponse(BaseModel):
     status: str
 
 
+@app.get("/")
+async def root():
+    return {
+        "status": "Active", 
+        "message": "Contract Review OpenEnv API is running. Please navigate to /docs to view the Swagger API interface."
+    }
+
+
 @app.get("/tasks")
 async def tasks():
     """Returns list of all tasks with their action schema."""
