@@ -18,7 +18,7 @@ license: mit
 ![HuggingFace](https://img.shields.io/badge/HuggingFace-Space-yellow?style=flat-square&logo=huggingface)
 ![License](https://img.shields.io/badge/License-MIT-lightgrey?style=flat-square)
 
-> **An AI agent environment for contract review, risk assessment, and legal clause negotiation** — built for the [Meta PyTorch OpenEnv Hackathon](https://www.scaler.com/school-of-technology/meta-pytorch-hackathon/).
+> **An AI agent environment for contract review, risk assessment, and legal clause negotiation** — built for the [Meta PyTorch OpenEnv Hackathon](https://www.scaler.com/school-of-technology/meta-pytorch-hackathon/)..
 
 ---
 
