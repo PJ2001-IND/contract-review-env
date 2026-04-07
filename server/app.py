@@ -339,7 +339,10 @@ async def grader():
     if score is None:
         # Return 0.001 (not 0.0) — validator requires scores strictly > 0
         return GraderResponse(task_id=task_id or "none", score=0.001, episode_completed=False).model_dump()
-    return GraderResponse(task_id=task_id, score=score, episode_completed=True).model_dump()
+    
+    # Absolute final safety clamp before JSON serialization
+    safe_score = round(min(0.999, max(0.001, float(score))), 4)
+    return GraderResponse(task_id=task_id, score=safe_score, episode_completed=True).model_dump()
 
 
 @app.post("/baseline")
@@ -371,7 +374,8 @@ async def baseline():
                     if len(parts) >= 2:
                         key = parts[0].strip().lower().replace("score", "").strip(" -_")
                         val = float(parts[-1].strip())
-                        scores[key] = val
+                        # Absolute final safety clamp for baseline response
+                        scores[key] = round(min(0.999, max(0.001, val)), 4)
                 except (ValueError, IndexError):
                     pass
 
