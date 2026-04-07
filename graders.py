@@ -1,9 +1,12 @@
 """
 Deterministic graders for the three contract review tasks.
 Each grader scores agent performance on a 0.0–1.0 scale.
+Uses multi-factor scoring: keyword coverage, sequence similarity, and length signals.
 """
 
+from difflib import SequenceMatcher
 from typing import List, Dict, Any
+
 
 
 def _keyword_match_score(text: str, keywords: List[str]) -> float:
@@ -14,6 +17,52 @@ def _keyword_match_score(text: str, keywords: List[str]) -> float:
     matches = sum(1 for kw in keywords if kw.lower() in text_lower)
     raw = matches / len(keywords)
     return round(min(0.999, max(0.001, raw)), 4)
+
+
+def _amendment_quality_score(suggested: str, hint: str, keywords: List[str]) -> float:
+    """
+    Multi-factor amendment quality scoring:
+    - Sequence similarity to hint text (40%)
+    - Keyword coverage (40%)
+    - Length adequacy — longer and more specific is better (20%)
+    Returns a score strictly in (0, 1).
+    """
+    if not suggested or not suggested.strip():
+        return 0.001
+
+    s = suggested.lower().strip()
+    h = hint.lower().strip()
+
+    # 1. Sequence similarity to amendment hint
+    seq_score = SequenceMatcher(None, s, h).ratio()
+
+    # 2. Keyword coverage
+    kw_score = _keyword_match_score(s, keywords) if keywords else 0.5
+
+    # 3. Length adequacy — reward substantive amendments (>20 words)
+    word_count = len(s.split())
+    if word_count >= 20:
+        length_bonus = 0.999
+    elif word_count >= 10:
+        length_bonus = 0.7
+    elif word_count >= 5:
+        length_bonus = 0.4
+    else:
+        length_bonus = 0.1
+
+    combined = 0.40 * seq_score + 0.40 * kw_score + 0.20 * length_bonus
+    return round(min(0.999, max(0.001, combined)), 4)
+
+
+def _reasoning_quality_score(reasoning: str, keywords: List[str]) -> float:
+    """Score reasoning quality: keyword coverage + length signal."""
+    if not reasoning or not reasoning.strip():
+        return 0.001
+    kw = _keyword_match_score(reasoning, keywords) if keywords else 0.3
+    words = len(reasoning.split())
+    length = min(0.999, words / 30.0)  # Saturates at 30 words
+    return round(min(0.999, max(0.001, 0.6 * kw + 0.4 * length)), 4)
+
 
 
 def clause_identification_grader(
@@ -90,10 +139,10 @@ def risk_assessment_grader(
                 if actual_severity == expected_severity:
                     severity_correct += 1
 
-                # Check reasoning quality via keyword match
+                # Check reasoning quality: keyword coverage + length
                 reasoning = review.get("reasoning", "")
                 keywords = issues[0].get("keywords", [])
-                reasoning_scores.append(_keyword_match_score(reasoning, keywords))
+                reasoning_scores.append(_reasoning_quality_score(reasoning, keywords))
 
     # Detection: precision/recall
     recall = len(correct_flags) / len(true_positive_ids) if true_positive_ids else 0.999
@@ -117,13 +166,14 @@ def negotiation_grader(
     ground_truth: Dict[str, List[Dict[str, Any]]],
 ) -> float:
     """
-    HARD task grader: Detection + severity + amendment quality + precision.
+    HARD task grader: Detection + severity + amendment quality + reasoning + precision.
 
     Scoring:
-    - Clause detection (30%): Recall of problematic clauses
-    - Severity accuracy (20%): Correct severity classification
-    - Amendment quality (30%): Quality of suggested amendments
-    - Precision / no false positives (20%): Avoiding false flags
+    - Clause detection / recall (25%): Did agent find all problematic clauses?
+    - Severity accuracy (15%): Was severity correctly classified?
+    - Amendment quality (35%): Multi-factor: seq similarity + keyword overlap + length
+    - Reasoning quality (10%): Were the explanations specific and on-point?
+    - Precision / no false positives (15%): Avoiding approving bad clauses
     """
     true_positive_ids = set(ground_truth.keys())
     total_clauses_reviewed = len(reviews)
@@ -133,6 +183,7 @@ def negotiation_grader(
     severity_correct = 0
     severity_total = 0
     amendment_scores = []
+    reasoning_scores = []
     false_positives = 0
 
     for review in reviews:
@@ -151,22 +202,21 @@ def negotiation_grader(
                 if actual_severity == expected_severity:
                     severity_correct += 1
 
-                # Amendment quality
+                # Amendment quality — multi-factor scoring
                 suggested = review.get("suggested_text", "") or ""
                 hint = issues[0].get("amendment_hint", "")
-                if action == "suggest_amendment" and suggested:
-                    # Score based on keyword overlap with amendment hint
-                    hint_words = set(hint.lower().split())
-                    suggested_words = set(suggested.lower().split())
-                    if hint_words:
-                        overlap = len(hint_words & suggested_words) / len(hint_words)
-                    else:
-                        overlap = 0.001
-                    amendment_scores.append(round(min(0.999, max(0.001, overlap * 1.5)), 4))
+                keywords = issues[0].get("keywords", [])
+                if action == "suggest_amendment" and suggested.strip():
+                    amend_score = _amendment_quality_score(suggested, hint, keywords)
+                    amendment_scores.append(amend_score)
                 elif action == "suggest_amendment":
-                    amendment_scores.append(0.2)  # Tried but empty
+                    amendment_scores.append(0.05)   # Attempted but empty text
                 else:
-                    amendment_scores.append(0.001)  # Flagged but no amendment
+                    amendment_scores.append(0.001)  # Only flagged, no amendment text
+
+                # Also score reasoning quality for negotiation
+                reasoning = review.get("reasoning", "") or ""
+                reasoning_scores.append(_reasoning_quality_score(reasoning, keywords))
             else:
                 false_positives += 1
 
@@ -186,11 +236,16 @@ def negotiation_grader(
     else:
         precision_score = 0.999 if false_positives == 0 else 0.001
 
+    # Reasoning quality
+    reasoning_avg = sum(reasoning_scores) / len(reasoning_scores) if reasoning_scores else 0.001
+    reasoning_avg = round(min(0.999, max(0.001, reasoning_avg)), 4)
+
     score = (
-        0.30 * recall
-        + 0.20 * severity_score
-        + 0.30 * amendment_avg
-        + 0.20 * max(0.001, precision_score)
+        0.25 * recall
+        + 0.15 * severity_score
+        + 0.35 * amendment_avg
+        + 0.10 * reasoning_avg
+        + 0.15 * max(0.001, precision_score)
     )
     return round(min(0.999, max(0.001, score)), 4)
 
