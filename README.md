@@ -93,7 +93,7 @@ The reward function provides **partial progress signals** throughout the episode
 | ⏱️ Time pressure | `−0.02` | Per step (prevents infinite loops) |
 | 🎉 Completion bonus | `+0.20` | Reviewed all clauses |
 
-> 📊 Final score is determined by the task-specific **grader** returning a float between `0.0` and `1.0`.
+> 📊 Final score is determined by the task-specific **grader** returning a float strictly between `0` and `1` (exclusive — never exactly `0.0` or `1.0`).
 
 ---
 
@@ -155,9 +155,14 @@ uv run python play_demo.py
 | `/step` | `POST` | Submit action for current clause |
 | `/state` | `GET` | Get current environment state |
 | `/tasks` | `GET` | List all tasks with full action schema |
-| `/grader` | `GET` | Get grader score after episode (0.0–1.0) |
+| `/grader` | `GET` | Get grader score after episode — strictly `(0, 1)` |
 | `/baseline` | `POST` | Run LLM inference and return scores |
+| `/web` | `GET` | Interactive web UI for manual testing |
+| `/ws` | `WebSocket` | Persistent session (used by EnvClient) |
 | `/docs` | `GET` | Interactive Swagger UI |
+| `/metadata` | `GET` | OpenEnv environment metadata |
+| `/schema` | `GET` | Action/observation JSON schema |
+| `/mcp` | `POST` | MCP tool protocol endpoint |
 
 ---
 
@@ -176,7 +181,7 @@ contract_review_env/
 ├── client.py              # ContractReviewEnv client
 ├── models.py              # Action and Observation Pydantic models
 ├── contracts.py           # 3 synthetic contracts with embedded issues
-├── graders.py             # Deterministic graders (0.0–1.0)
+├── graders.py             # Deterministic graders — scores strictly in (0, 1)
 ├── inference.py           # Baseline LLM agent script
 ├── play_demo.py           # Interactive terminal demo (human player)
 └── server/
@@ -234,7 +239,8 @@ contract_review_env/
 
 **Praasuk Jain**
 - GitHub: [@PJ2001-IND](https://github.com/PJ2001-IND)
-- Hugging Face: [@praasukjain2001](https://huggingface.co/praasukjain2001)
+- Hugging Face Space: [praasukjain2001/contract-review-env](https://huggingface.co/spaces/praasukjain2001/contract-review-env)
+- Hugging Face Profile: [@praasukjain2001](https://huggingface.co/praasukjain2001)
 - LinkedIn: [praasuk-jain](https://www.linkedin.com/in/praasuk-jain-425b6b1a3/)
 
 ---
