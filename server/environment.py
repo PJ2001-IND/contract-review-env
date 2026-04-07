@@ -275,7 +275,7 @@ class ContractReviewEnvironment(Environment):
         """Return a done observation when the episode is already complete."""
         return ContractObservation(
             done=True,
-            reward=0.0,
+            reward=0.0,   # Per-step reward only — grader score is separate
             contract_title=self._contract["title"] if self._contract else "",
             contract_text="",
             current_clause_id="",

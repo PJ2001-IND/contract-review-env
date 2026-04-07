@@ -277,7 +277,8 @@ def main() -> None:
         except Exception as exc:
             if DEBUG:
                 print(f"\n  [ERROR] Task {task_id} failed: {exc}")
-            scores[task_id] = 0.0
+            scores[task_id] = 0.001  # Strictly > 0 per validator requirement
+
 
     # Summary
     if DEBUG:

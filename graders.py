@@ -229,10 +229,11 @@ def negotiation_grader(
     # Amendment quality
     amendment_avg = sum(amendment_scores) / len(amendment_scores) if amendment_scores else 0.001
 
-    # Precision (penalize false positives)
+    # Precision (penalize false positives) — clamped strictly to (0.001, 0.999)
     non_issue_clauses = total_clauses_reviewed - len(true_positive_ids)
     if non_issue_clauses > 0:
-        precision_score = 1.0 - (false_positives / non_issue_clauses)
+        raw_precision = 1.0 - (false_positives / non_issue_clauses)
+        precision_score = round(min(0.999, max(0.001, raw_precision)), 4)
     else:
         precision_score = 0.999 if false_positives == 0 else 0.001
 
