@@ -9,10 +9,11 @@ from typing import List, Dict, Any
 def _keyword_match_score(text: str, keywords: List[str]) -> float:
     """Check how many expected keywords appear in the text (case-insensitive)."""
     if not keywords or not text:
-        return 0.0
+        return 0.001
     text_lower = text.lower()
     matches = sum(1 for kw in keywords if kw.lower() in text_lower)
-    return matches / len(keywords)
+    raw = matches / len(keywords)
+    return round(min(0.999, max(0.001, raw)), 4)
 
 
 def clause_identification_grader(
@@ -100,10 +101,12 @@ def risk_assessment_grader(
     detection = 0.6 * recall + 0.4 * precision
 
     # Severity accuracy
-    severity_score = severity_correct / severity_total if severity_total > 0 else 0.0
+    severity_score = severity_correct / severity_total if severity_total > 0 else 0.001
+    severity_score = round(min(0.999, max(0.001, severity_score)), 4)
 
     # Reasoning quality
-    reasoning_avg = sum(reasoning_scores) / len(reasoning_scores) if reasoning_scores else 0.0
+    reasoning_avg = sum(reasoning_scores) / len(reasoning_scores) if reasoning_scores else 0.001
+    reasoning_avg = round(min(0.999, max(0.001, reasoning_avg)), 4)
 
     score = 0.50 * detection + 0.30 * severity_score + 0.20 * reasoning_avg
     return round(min(0.999, max(0.001, score)), 4)
@@ -158,12 +161,12 @@ def negotiation_grader(
                     if hint_words:
                         overlap = len(hint_words & suggested_words) / len(hint_words)
                     else:
-                        overlap = 0.0
-                    amendment_scores.append(min(1.0, overlap * 1.5))  # Slight boost
+                        overlap = 0.001
+                    amendment_scores.append(round(min(0.999, max(0.001, overlap * 1.5)), 4))
                 elif action == "suggest_amendment":
                     amendment_scores.append(0.2)  # Tried but empty
                 else:
-                    amendment_scores.append(0.0)  # Flagged but no amendment
+                    amendment_scores.append(0.001)  # Flagged but no amendment
             else:
                 false_positives += 1
 
@@ -187,7 +190,7 @@ def negotiation_grader(
         0.30 * recall
         + 0.20 * severity_score
         + 0.30 * amendment_avg
-        + 0.20 * max(0.0, precision_score)
+        + 0.20 * max(0.001, precision_score)
     )
     return round(min(0.999, max(0.001, score)), 4)
 
