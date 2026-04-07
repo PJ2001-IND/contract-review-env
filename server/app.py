@@ -14,8 +14,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from typing import Optional
+
 
 from models import ContractAction, ContractObservation, ContractState
 from contracts import TASKS, get_task_ids
@@ -159,15 +161,163 @@ class BaselineResponse(BaseModel):
 @app.get("/")
 async def root():
     return {
-        "status": "Active", 
-        "message": "Contract Review OpenEnv API is running. Please navigate to /docs to view the Swagger API interface."
+        "status": "Active",
+        "message": "Contract Review OpenEnv API. Navigate to /docs for Swagger UI, /web for interactive demo."
     }
 
 
+@app.get("/web", response_class=HTMLResponse, include_in_schema=True,
+         summary="Interactive Web UI", tags=["default"])
+async def web_ui():
+    """Interactive web interface for manually testing the Contract Review environment."""
+    html = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Contract Review Env — Interactive Demo</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+         background: #0f1117; color: #e2e8f0; margin: 0; padding: 20px; }
+  h1 { color: #7c3aed; } h2 { color: #a78bfa; border-bottom: 1px solid #374151; padding-bottom: 8px; }
+  .card { background: #1e2130; border-radius: 12px; padding: 20px; margin: 16px 0;
+          border: 1px solid #374151; }
+  button { background: #7c3aed; color: white; border: none; padding: 10px 20px;
+           border-radius: 8px; cursor: pointer; font-size: 14px; margin: 4px; transition: all 0.2s; }
+  button:hover { background: #6d28d9; transform: translateY(-1px); }
+  button.danger { background: #dc2626; } button.danger:hover { background: #b91c1c; }
+  button.success { background: #059669; } button.success:hover { background: #047857; }
+  select, input, textarea { background: #111827; color: #e2e8f0; border: 1px solid #374151;
+    border-radius: 8px; padding: 8px 12px; width: 100%; box-sizing: border-box; margin: 6px 0; }
+  pre { background: #111827; border-radius: 8px; padding: 16px; overflow-x: auto;
+        font-size: 12px; max-height: 400px; overflow-y: auto; border: 1px solid #374151; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: bold; }
+  .easy { background: #064e3b; color: #34d399; } .medium { background: #78350f; color: #fbbf24; }
+  .hard { background: #7f1d1d; color: #f87171; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 768px) { .grid { grid-template-columns: 1fr; } }
+  .status { padding: 8px 16px; border-radius: 8px; background: #064e3b; color: #34d399;
+            display: inline-block; margin: 8px 0; }
+</style>
+</head>
+<body>
+<h1>📝 Contract Review Environment</h1>
+<p>Interactive demo for the OpenEnv hackathon submission. Use the controls below to test all tasks and endpoints.</p>
+
+<div class="card">
+  <h2>🎯 Start Episode</h2>
+  <label>Task:</label>
+  <select id="taskSelect">
+    <option value="clause_identification">🟢 clause_identification (Easy — 5 clauses)</option>
+    <option value="risk_assessment">🟡 risk_assessment (Medium — 10 clauses)</option>
+    <option value="negotiation">🔴 negotiation (Hard — 15 clauses)</option>
+  </select>
+  <br><button onclick="reset()">🔄 Reset Environment</button>
+  <button onclick="getState()">📊 Get State</button>
+  <button onclick="getGrader()">🏆 Get Score</button>
+</div>
+
+<div class="card">
+  <h2>⚡ Submit Action</h2>
+  <div class="grid">
+    <div>
+      <label>Clause ID:</label>
+      <input id="clauseId" placeholder="e.g. c1, c2, c3" value="c1">
+      <label>Action Type:</label>
+      <select id="actionType">
+        <option value="approve">✅ approve</option>
+        <option value="flag_risk">⚠️ flag_risk</option>
+        <option value="suggest_amendment">✏️ suggest_amendment</option>
+      </select>
+    </div>
+    <div>
+      <label>Severity (for flag/amend):</label>
+      <select id="severity">
+        <option value="null">null (for approve)</option>
+        <option value="critical">🔴 critical</option>
+        <option value="moderate">🟡 moderate</option>
+        <option value="minor">🟢 minor</option>
+      </select>
+      <label>Reasoning:</label>
+      <input id="reasoning" placeholder="Explain your decision..." value="Clause appears standard and fair">
+    </div>
+  </div>
+  <label>Suggested Amendment (for suggest_amendment only):</label>
+  <textarea id="suggestedText" rows="2" placeholder="Proposed replacement text..."></textarea>
+  <br><button class="success" onclick="step()">▶️ Submit Step</button>
+</div>
+
+<div class="card">
+  <h2>📡 Response</h2>
+  <pre id="output">← Click a button to see the response here</pre>
+</div>
+
+<div class="card">
+  <h2>🔌 Quick API Reference</h2>
+  <div class="grid">
+    <div>
+      <button onclick="fetch('/health').then(r=>r.json()).then(d=>show(d))">GET /health</button>
+      <button onclick="fetch('/tasks').then(r=>r.json()).then(d=>show(d))">GET /tasks</button>
+      <button onclick="fetch('/metadata').then(r=>r.json()).then(d=>show(d))">GET /metadata</button>
+      <button onclick="fetch('/schema').then(r=>r.json()).then(d=>show(d))">GET /schema</button>
+    </div>
+    <div>
+      <a href="/docs" target="_blank"><button>📖 Swagger UI /docs</button></a>
+      <a href="/openapi.json" target="_blank"><button>📄 OpenAPI JSON</button></a>
+    </div>
+  </div>
+</div>
+
+<script>
+const show = (data) => { document.getElementById('output').textContent = JSON.stringify(data, null, 2); };
+
+async function reset() {
+  const task = document.getElementById('taskSelect').value;
+  const r = await fetch('/reset', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({task_id: task})});
+  const d = await r.json();
+  if (d.current_clause_id) document.getElementById('clauseId').value = d.current_clause_id;
+  show(d);
+}
+
+async function step() {
+  const sevRaw = document.getElementById('severity').value;
+  const sev = sevRaw === 'null' ? null : sevRaw;
+  const txt = document.getElementById('suggestedText').value.trim() || null;
+  const body = {
+    action: {
+      clause_id: document.getElementById('clauseId').value,
+      action_type: document.getElementById('actionType').value,
+      severity: sev, reasoning: document.getElementById('reasoning').value,
+      suggested_text: txt,
+    }
+  };
+  const r = await fetch('/step', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(body)});
+  const d = await r.json();
+  if (d.observation && d.observation.current_clause_id)
+    document.getElementById('clauseId').value = d.observation.current_clause_id;
+  show(d);
+}
+
+async function getState() {
+  const r = await fetch('/state');
+  show(await r.json());
+}
+async function getGrader() {
+  const r = await fetch('/grader');
+  show(await r.json());
+}
+</script>
+</body></html>
+"""
+    return HTMLResponse(content=html)
 
 
 @app.get("/tasks")
 async def tasks():
+
     """Returns list of all tasks with their action schema."""
     action_schema = ContractAction.model_json_schema()
     task_list = []
@@ -187,7 +337,8 @@ async def grader():
     score = ContractReviewEnvironment._global_last_grader_score
     task_id = ContractReviewEnvironment._global_last_task_id
     if score is None:
-        return GraderResponse(task_id=task_id or "none", score=0.0, episode_completed=False).model_dump()
+        # Return 0.001 (not 0.0) — validator requires scores strictly > 0
+        return GraderResponse(task_id=task_id or "none", score=0.001, episode_completed=False).model_dump()
     return GraderResponse(task_id=task_id, score=score, episode_completed=True).model_dump()
 
 
