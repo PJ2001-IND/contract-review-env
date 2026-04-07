@@ -32,12 +32,49 @@ try:
     def _env_factory() -> ContractReviewEnvironment:
         return _singleton_env
 
+    from fastapi import Request
+    from fastapi.responses import JSONResponse
+    from fastapi.routing import APIRoute
+
     app = create_app(
         _env_factory,
         ContractAction,
         ContractObservation,
         env_name="contract_review_env",
     )
+
+    # Override /state: remove OpenEnv's partial-serialization route and insert our full one
+    async def _full_state_endpoint(request: Request):
+        """Return all ContractState fields (OpenEnv omits fields equal to defaults)."""
+        s = _singleton_env.state
+        return JSONResponse({
+            "episode_id": getattr(s, "episode_id", None),
+            "step_count": s.step_count,
+            "task_id": s.task_id,
+            "contract_id": s.contract_id,
+            "total_issues": s.total_issues,
+            "issues_found": s.issues_found,
+            "correct_severities": s.correct_severities,
+            "false_positives": s.false_positives,
+            "amendments_suggested": s.amendments_suggested,
+            "cumulative_reward": s.cumulative_reward,
+        })
+
+    # Remove existing /state GET route registered by create_app
+    app.router.routes = [
+        r for r in app.router.routes
+        if not (isinstance(r, APIRoute) and r.path == "/state" and "GET" in r.methods)
+    ]
+    # Re-add our full version first so it matches before any fallback
+    new_state_route = APIRoute(
+        "/state",
+        _full_state_endpoint,
+        methods=["GET"],
+        summary="Get current environment state",
+        tags=["State Management"],
+    )
+    app.router.routes.insert(0, new_state_route)
+
 except ImportError:
     # Fallback: create FastAPI app manually (for standalone use)
     from environment import ContractReviewEnvironment
@@ -125,6 +162,8 @@ async def root():
         "status": "Active", 
         "message": "Contract Review OpenEnv API is running. Please navigate to /docs to view the Swagger API interface."
     }
+
+
 
 
 @app.get("/tasks")

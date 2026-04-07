@@ -81,11 +81,19 @@ class ContractObservation(Observation):
 
 class ContractState(State):
     """Internal environment state."""
-    task_id: str = ""
-    contract_id: str = ""
-    total_issues: int = 0
-    issues_found: int = 0
-    correct_severities: int = 0
-    false_positives: int = 0
-    amendments_suggested: int = 0
-    cumulative_reward: float = 0.0
+    task_id: str = Field(default="", description="Current task ID")
+    contract_id: str = Field(default="", description="Current contract ID")
+    total_issues: int = Field(default=0, description="Total known issues in contract")
+    issues_found: int = Field(default=0, description="Number of issues correctly identified")
+    correct_severities: int = Field(default=0, description="Severities classified correctly")
+    false_positives: int = Field(default=0, description="Number of incorrect flags")
+    amendments_suggested: int = Field(default=0, description="Number of amendments suggested")
+    cumulative_reward: float = Field(default=0.0, description="Total accumulated reward this episode")
+
+    model_config = {"populate_by_name": True}
+
+    def model_dump(self, **kwargs) -> dict:
+        """Always serialize all fields, even if unset or equal to defaults."""
+        kwargs.pop("exclude_unset", None)
+        kwargs.pop("exclude_defaults", None)
+        return super().model_dump(exclude_unset=False, exclude_defaults=False, **kwargs)
