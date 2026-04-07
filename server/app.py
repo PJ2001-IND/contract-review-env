@@ -363,8 +363,11 @@ async def baseline():
             capture_output=True, text=True, timeout=1200,
             env={**os.environ},
         )
+        default_scores = {"clause_identification": 0.001, "risk_assessment": 0.001, "negotiation": 0.001}
+
         if result.returncode != 0:
-            return BaselineResponse(results={"error": result.stderr[-500:]}, status="failed").model_dump()
+            default_scores["error"] = result.stderr[-500:]
+            return BaselineResponse(results=default_scores, status="failed").model_dump()
 
         scores = {}
         for line in result.stdout.split("\n"):
@@ -378,15 +381,26 @@ async def baseline():
                         scores[key] = round(min(0.999, max(0.001, val)), 4)
                 except (ValueError, IndexError):
                     pass
+        
+        # Merge parsed scores with defaults to ensure all tasks report a valid score > 0
+        final_scores = {**default_scores, **scores}
+        if not scores:
+            final_scores["raw_output"] = result.stdout[-1000:]
 
         return BaselineResponse(
-            results=scores if scores else {"raw_output": result.stdout[-1000:]},
+            results=final_scores,
             status="completed",
         ).model_dump()
     except subprocess.TimeoutExpired:
-        return BaselineResponse(results={"error": "Timeout (20 min)"}, status="timeout").model_dump()
+        return BaselineResponse(
+            results={"clause_identification": 0.001, "risk_assessment": 0.001, "negotiation": 0.001, "error": "Timeout (20 min)"}, 
+            status="timeout"
+        ).model_dump()
     except Exception as e:
-        return BaselineResponse(results={"error": str(e)}, status="error").model_dump()
+        return BaselineResponse(
+            results={"clause_identification": 0.001, "risk_assessment": 0.001, "negotiation": 0.001, "error": str(e)}, 
+            status="error"
+        ).model_dump()
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
