@@ -25,9 +25,15 @@ try:
     from openenv.core.env_server import create_app
     from environment import ContractReviewEnvironment
 
-    # create_app takes the CLASS (factory), not instance
+    # create_app calls env_factory() on every request.
+    # We must pass a singleton factory so /reset and /step share the same instance.
+    _singleton_env = ContractReviewEnvironment()
+
+    def _env_factory() -> ContractReviewEnvironment:
+        return _singleton_env
+
     app = create_app(
-        ContractReviewEnvironment,
+        _env_factory,
         ContractAction,
         ContractObservation,
         env_name="contract_review_env",
