@@ -207,7 +207,7 @@ class ContractReviewEnvironment(Environment):
             ContractReviewEnvironment._global_last_grader_score = self._last_grader_score
             ContractReviewEnvironment._global_last_task_id = self._state.task_id
 
-            final_reward = max(0.0, min(1.0, self._last_grader_score))
+            final_reward = max(0.001, min(0.999, self._last_grader_score))
 
             message_parts.append(
                 f"All clauses reviewed! Final grader score: {self._last_grader_score:.4f}. "

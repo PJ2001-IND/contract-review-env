@@ -39,14 +39,14 @@ def clause_identification_grader(
                 correct_flags.add(cid)
 
     # Recall: of all issues, how many did we find?
-    recall = len(correct_flags) / len(true_positive_ids) if true_positive_ids else 1.0
+    recall = len(correct_flags) / len(true_positive_ids) if true_positive_ids else 0.999
 
     # Precision: of all flags, how many were correct?
-    precision = len(correct_flags) / len(flagged_ids) if flagged_ids else 0.0
+    precision = len(correct_flags) / len(flagged_ids) if flagged_ids else 0.001
 
-    # If agent flagged nothing, precision is 0 and recall is 0
+    # If agent flagged nothing at all, return minimum score
     if not flagged_ids and true_positive_ids:
-        return 0.0
+        return 0.001
 
     score = 0.6 * recall + 0.4 * precision
     return round(min(0.999, max(0.001, score)), 4)
@@ -95,8 +95,8 @@ def risk_assessment_grader(
                 reasoning_scores.append(_keyword_match_score(reasoning, keywords))
 
     # Detection: precision/recall
-    recall = len(correct_flags) / len(true_positive_ids) if true_positive_ids else 1.0
-    precision = len(correct_flags) / len(flagged_ids) if flagged_ids else 0.0
+    recall = len(correct_flags) / len(true_positive_ids) if true_positive_ids else 0.999
+    precision = len(correct_flags) / len(flagged_ids) if flagged_ids else 0.001
     detection = 0.6 * recall + 0.4 * precision
 
     # Severity accuracy
@@ -168,20 +168,20 @@ def negotiation_grader(
                 false_positives += 1
 
     # Detection (recall)
-    recall = len(correct_flags) / len(true_positive_ids) if true_positive_ids else 1.0
+    recall = len(correct_flags) / len(true_positive_ids) if true_positive_ids else 0.999
 
     # Severity
-    severity_score = severity_correct / severity_total if severity_total > 0 else 0.0
+    severity_score = severity_correct / severity_total if severity_total > 0 else 0.001
 
     # Amendment quality
-    amendment_avg = sum(amendment_scores) / len(amendment_scores) if amendment_scores else 0.0
+    amendment_avg = sum(amendment_scores) / len(amendment_scores) if amendment_scores else 0.001
 
     # Precision (penalize false positives)
     non_issue_clauses = total_clauses_reviewed - len(true_positive_ids)
     if non_issue_clauses > 0:
         precision_score = 1.0 - (false_positives / non_issue_clauses)
     else:
-        precision_score = 1.0 if false_positives == 0 else 0.0
+        precision_score = 0.999 if false_positives == 0 else 0.001
 
     score = (
         0.30 * recall
