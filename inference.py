@@ -161,7 +161,7 @@ def parse_llm_response(response_text: str, clause_id: str) -> ContractAction:
 
 def _clamp_score(value: float) -> float:
     """Ensure all reported task scores stay strictly within (0, 1)."""
-    return round(min(0.999, max(0.001, float(value))), 4)
+    return round(min(0.999, max(0.01, float(value))), 4)
 
 
 def _sanitize_single_line(value: Optional[str]) -> str:
@@ -209,7 +209,7 @@ def run_task(
 
     step = 0
     rewards = []
-    grader_score = 0.001
+    grader_score = 0.01
     success = False
 
     try:
@@ -257,7 +257,7 @@ def run_task(
 
             # Step environment
             obs = env.step(action)
-            reward = obs.reward if obs.reward is not None else 0.0
+            reward = obs.reward if obs.reward is not None else 0.01
             rewards.append(reward)
 
             log_step(
@@ -271,7 +271,7 @@ def run_task(
         # Get grader score
         grader_score = env.get_last_grader_score()
         if grader_score is None:
-            grader_score = 0.001
+            grader_score = 0.01
         grader_score = _clamp_score(grader_score)
         success = grader_score >= 0.5
         log_end(success=success, steps=step, score=grader_score, rewards=rewards)
@@ -281,8 +281,8 @@ def run_task(
         if DEBUG:
             print(f"  [CRITICAL ERROR] {e}")
         # ALWAYS print an [END] log even if crash, to prevent Validator falling back to exactly 0.0
-        log_end(success=False, steps=step, score=0.001, rewards=rewards)
-        return 0.001
+        log_end(success=False, steps=step, score=0.01, rewards=rewards)
+        return 0.01
 
 
 def main() -> None:
@@ -321,7 +321,7 @@ def main() -> None:
         except Exception as exc:
             if DEBUG:
                 print(f"\n  [ERROR] Task {task_id} failed: {exc}")
-            scores[task_id] = 0.001  # Strictly > 0 per validator requirement
+            scores[task_id] = 0.01  # Strictly > 0 per validator requirement
 
 
     # Summary

@@ -12,11 +12,11 @@ from typing import List, Dict, Any
 def _keyword_match_score(text: str, keywords: List[str]) -> float:
     """Check how many expected keywords appear in the text (case-insensitive)."""
     if not keywords or not text:
-        return 0.001
+        return 0.01
     text_lower = text.lower()
     matches = sum(1 for kw in keywords if kw.lower() in text_lower)
     raw = matches / len(keywords)
-    return round(min(0.999, max(0.001, raw)), 4)
+    return round(min(0.999, max(0.01, raw)), 4)
 
 
 def _amendment_quality_score(suggested: str, hint: str, keywords: List[str]) -> float:
@@ -28,7 +28,7 @@ def _amendment_quality_score(suggested: str, hint: str, keywords: List[str]) -> 
     Returns a score strictly in (0, 1).
     """
     if not suggested or not suggested.strip():
-        return 0.001
+        return 0.01
 
     s = suggested.lower().strip()
     h = hint.lower().strip()
@@ -51,17 +51,17 @@ def _amendment_quality_score(suggested: str, hint: str, keywords: List[str]) -> 
         length_bonus = 0.1
 
     combined = 0.40 * seq_score + 0.40 * kw_score + 0.20 * length_bonus
-    return round(min(0.999, max(0.001, combined)), 4)
+    return round(min(0.999, max(0.01, combined)), 4)
 
 
 def _reasoning_quality_score(reasoning: str, keywords: List[str]) -> float:
     """Score reasoning quality: keyword coverage + length signal."""
     if not reasoning or not reasoning.strip():
-        return 0.001
+        return 0.01
     kw = _keyword_match_score(reasoning, keywords) if keywords else 0.3
     words = len(reasoning.split())
     length = min(0.999, words / 30.0)  # Saturates at 30 words
-    return round(min(0.999, max(0.001, 0.6 * kw + 0.4 * length)), 4)
+    return round(min(0.999, max(0.01, 0.6 * kw + 0.4 * length)), 4)
 
 
 
@@ -84,15 +84,15 @@ def clause_identification_grader(
                     correct_flags.add(cid)
 
         recall = len(correct_flags) / len(true_positive_ids) if true_positive_ids else 0.999
-        precision = len(correct_flags) / len(flagged_ids) if flagged_ids else 0.001
+        precision = len(correct_flags) / len(flagged_ids) if flagged_ids else 0.01
 
         if not flagged_ids and true_positive_ids:
-            return 0.001
+            return 0.01
 
         score = 0.6 * recall + 0.4 * precision
-        return round(min(0.999, max(0.001, score)), 4)
+        return round(min(0.999, max(0.01, score)), 4)
     except Exception:
-        return 0.001
+        return 0.01
 
 
 def risk_assessment_grader(
@@ -133,19 +133,19 @@ def risk_assessment_grader(
                     reasoning_scores.append(_reasoning_quality_score(reasoning, keywords))
 
         recall = len(correct_flags) / len(true_positive_ids) if true_positive_ids else 0.999
-        precision = len(correct_flags) / len(flagged_ids) if flagged_ids else 0.001
+        precision = len(correct_flags) / len(flagged_ids) if flagged_ids else 0.01
         detection = 0.6 * recall + 0.4 * precision
 
-        severity_score = severity_correct / severity_total if severity_total > 0 else 0.001
-        severity_score = round(min(0.999, max(0.001, severity_score)), 4)
+        severity_score = severity_correct / severity_total if severity_total > 0 else 0.01
+        severity_score = round(min(0.999, max(0.01, severity_score)), 4)
 
-        reasoning_avg = sum(reasoning_scores) / len(reasoning_scores) if reasoning_scores else 0.001
-        reasoning_avg = round(min(0.999, max(0.001, reasoning_avg)), 4)
+        reasoning_avg = sum(reasoning_scores) / len(reasoning_scores) if reasoning_scores else 0.01
+        reasoning_avg = round(min(0.999, max(0.01, reasoning_avg)), 4)
 
         score = 0.50 * detection + 0.30 * severity_score + 0.20 * reasoning_avg
-        return round(min(0.999, max(0.001, score)), 4)
+        return round(min(0.999, max(0.01, score)), 4)
     except Exception:
-        return 0.001
+        return 0.01
 
 
 def negotiation_grader(
@@ -193,7 +193,7 @@ def negotiation_grader(
                     elif action == "suggest_amendment":
                         amendment_scores.append(0.05)
                     else:
-                        amendment_scores.append(0.001)
+                        amendment_scores.append(0.01)
 
                     reasoning = review.get("reasoning", "") or ""
                     reasoning_scores.append(_reasoning_quality_score(reasoning, keywords))
@@ -201,29 +201,29 @@ def negotiation_grader(
                     false_positives += 1
 
         recall = len(correct_flags) / len(true_positive_ids) if true_positive_ids else 0.999
-        severity_score = severity_correct / severity_total if severity_total > 0 else 0.001
-        amendment_avg = sum(amendment_scores) / len(amendment_scores) if amendment_scores else 0.001
+        severity_score = severity_correct / severity_total if severity_total > 0 else 0.01
+        amendment_avg = sum(amendment_scores) / len(amendment_scores) if amendment_scores else 0.01
 
         non_issue_clauses = total_clauses_reviewed - len(true_positive_ids)
         if non_issue_clauses > 0:
             raw_precision = 1.0 - (false_positives / non_issue_clauses)
-            precision_score = round(min(0.999, max(0.001, raw_precision)), 4)
+            precision_score = round(min(0.999, max(0.01, raw_precision)), 4)
         else:
-            precision_score = 0.999 if false_positives == 0 else 0.001
+            precision_score = 0.999 if false_positives == 0 else 0.01
 
-        reasoning_avg = sum(reasoning_scores) / len(reasoning_scores) if reasoning_scores else 0.001
-        reasoning_avg = round(min(0.999, max(0.001, reasoning_avg)), 4)
+        reasoning_avg = sum(reasoning_scores) / len(reasoning_scores) if reasoning_scores else 0.01
+        reasoning_avg = round(min(0.999, max(0.01, reasoning_avg)), 4)
 
         score = (
             0.25 * recall
             + 0.15 * severity_score
             + 0.35 * amendment_avg
             + 0.10 * reasoning_avg
-            + 0.15 * max(0.001, precision_score)
+            + 0.15 * max(0.01, precision_score)
         )
-        return round(min(0.999, max(0.001, score)), 4)
+        return round(min(0.999, max(0.01, score)), 4)
     except Exception:
-        return 0.001
+        return 0.01
 
 
 # ── Grader registry ───────────────────────────────────────────────────────────
@@ -243,10 +243,10 @@ def grade_episode(
     """Run the appropriate grader for the given task."""
     try:
         if task_id not in GRADERS:
-            return 0.001
+            return 0.01
         score = GRADERS[task_id](reviews, ground_truth)
         if score is None:
-            return 0.001
-        return round(min(0.999, max(0.001, float(score))), 4)
+            return 0.01
+        return round(min(0.999, max(0.01, float(score))), 4)
     except Exception:
-        return 0.001
+        return 0.01

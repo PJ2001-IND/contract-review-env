@@ -93,7 +93,7 @@ class ContractReviewEnvironment(Environment):
         clause = self._clauses[0]
         return ContractObservation(
             done=False,
-            reward=None,
+            reward=0.01,
             contract_title=self._contract["title"],
             contract_text=self._format_full_contract(),
             current_clause_id=clause["id"],
@@ -200,15 +200,15 @@ class ContractReviewEnvironment(Environment):
             self._done = True
             self._raw_reward += self.REWARD_COMPLETION_BONUS
 
-            # Run grader — clamp at every boundary to guarantee (0.001, 0.999)
+            # Run grader — clamp at every boundary to guarantee (0.01, 0.999)
             raw_grader = grade_episode(
                 self._state.task_id, self._reviews, self._ground_truth
             )
-            self._last_grader_score = round(min(0.999, max(0.001, float(raw_grader))), 4)
+            self._last_grader_score = round(min(0.999, max(0.01, float(raw_grader))), 4)
             ContractReviewEnvironment._global_last_grader_score = self._last_grader_score
             ContractReviewEnvironment._global_last_task_id = self._state.task_id
 
-            final_reward = round(min(0.999, max(0.001, self._last_grader_score)), 4)
+            final_reward = round(min(0.999, max(0.01, self._last_grader_score)), 4)
 
             message_parts.append(
                 f"All clauses reviewed! Final grader score: {self._last_grader_score:.4f}. "
@@ -239,7 +239,7 @@ class ContractReviewEnvironment(Environment):
 
         return ContractObservation(
             done=False,
-            reward=step_reward,
+            reward=round(min(0.999, max(0.01, float(step_reward))), 4),
             contract_title=self._contract["title"],
             contract_text=self._format_full_contract(),
             current_clause_id=next_clause["id"],
@@ -264,7 +264,7 @@ class ContractReviewEnvironment(Environment):
         if score is None:
             return None
         # Belt-and-suspenders clamp — never return exact 0.0 or 1.0
-        return round(min(0.999, max(0.001, float(score))), 4)
+        return round(min(0.999, max(0.01, float(score))), 4)
 
     def _format_full_contract(self) -> str:
         """Format the entire contract as readable text."""
@@ -280,7 +280,7 @@ class ContractReviewEnvironment(Environment):
         """Return a done observation when the episode is already complete."""
         return ContractObservation(
             done=True,
-            reward=0.001,   # Strictly > 0 — validator checks all reward fields
+            reward=0.01,   # Strictly > 0 — validator checks all reward fields
             contract_title=self._contract["title"] if self._contract else "",
             contract_text="",
             current_clause_id="",

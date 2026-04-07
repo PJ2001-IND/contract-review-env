@@ -161,7 +161,7 @@ class BaselineResponse(BaseModel):
 
 def _clamp_score(value: float) -> float:
     """Ensure baseline-reported task scores always stay strictly within (0, 1)."""
-    return round(min(0.999, max(0.001, float(value))), 4)
+    return round(min(0.999, max(0.01, float(value))), 4)
 
 
 def _parse_baseline_scores(stdout: str) -> dict:
@@ -383,11 +383,11 @@ async def grader():
     score = ContractReviewEnvironment._global_last_grader_score
     task_id = ContractReviewEnvironment._global_last_task_id
     if score is None:
-        # Return 0.001 (not 0.0) — validator requires scores strictly > 0
-        return GraderResponse(task_id=task_id or "none", score=0.001, episode_completed=False).model_dump()
+        # Return 0.01 (not 0.0) — validator requires scores strictly > 0
+        return GraderResponse(task_id=task_id or "none", score=0.01, episode_completed=False).model_dump()
     
     # Absolute final safety clamp before JSON serialization
-    safe_score = round(min(0.999, max(0.001, float(score))), 4)
+    safe_score = round(min(0.999, max(0.01, float(score))), 4)
     return GraderResponse(task_id=task_id, score=safe_score, episode_completed=True).model_dump()
 
 
@@ -409,7 +409,7 @@ async def baseline():
             capture_output=True, text=True, timeout=1200,
             env={**os.environ},
         )
-        default_scores = {"clause_identification": 0.001, "risk_assessment": 0.001, "negotiation": 0.001}
+        default_scores = {"clause_identification": 0.01, "risk_assessment": 0.01, "negotiation": 0.01}
 
         if result.returncode != 0:
             return BaselineResponse(results=default_scores, status=f"failed: {result.stderr[-200:]}").model_dump()
@@ -426,12 +426,12 @@ async def baseline():
         ).model_dump()
     except subprocess.TimeoutExpired:
         return BaselineResponse(
-            results={"clause_identification": 0.001, "risk_assessment": 0.001, "negotiation": 0.001}, 
+            results={"clause_identification": 0.01, "risk_assessment": 0.01, "negotiation": 0.01}, 
             status="timeout_20min"
         ).model_dump()
     except Exception as e:
         return BaselineResponse(
-            results={"clause_identification": 0.001, "risk_assessment": 0.001, "negotiation": 0.001}, 
+            results={"clause_identification": 0.01, "risk_assessment": 0.01, "negotiation": 0.01}, 
             status=f"error: {str(e)}"
         ).model_dump()
 

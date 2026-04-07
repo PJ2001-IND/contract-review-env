@@ -25,7 +25,7 @@ except ImportError:
         class Observation(BaseModel):
             """Base observation model."""
             done: bool = False
-            reward: Optional[float] = None
+            reward: Optional[float] = 0.01
 
         class State(BaseModel):
             """Base state model."""
@@ -61,7 +61,7 @@ class ClauseReview(Action):
     severity: Optional[str] = None
     reasoning: str = ""
     suggested_text: Optional[str] = None
-    reward_earned: float = 0.0
+    reward_earned: float = 0.01
 
 
 class ContractObservation(Observation):
@@ -88,7 +88,7 @@ class ContractState(State):
     correct_severities: int = Field(default=0, description="Severities classified correctly")
     false_positives: int = Field(default=0, description="Number of incorrect flags")
     amendments_suggested: int = Field(default=0, description="Number of amendments suggested")
-    cumulative_reward: float = Field(default=0.0, description="Total accumulated reward this episode")
+    cumulative_reward: float = Field(default=0.01, description="Total accumulated reward this episode")
 
     model_config = {"populate_by_name": True}
 
