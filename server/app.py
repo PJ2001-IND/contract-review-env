@@ -366,8 +366,7 @@ async def baseline():
         default_scores = {"clause_identification": 0.001, "risk_assessment": 0.001, "negotiation": 0.001}
 
         if result.returncode != 0:
-            default_scores["error"] = result.stderr[-500:]
-            return BaselineResponse(results=default_scores, status="failed").model_dump()
+            return BaselineResponse(results=default_scores, status=f"failed: {result.stderr[-200:]}").model_dump()
 
         scores = {}
         for line in result.stdout.split("\n"):
@@ -384,22 +383,21 @@ async def baseline():
         
         # Merge parsed scores with defaults to ensure all tasks report a valid score > 0
         final_scores = {**default_scores, **scores}
-        if not scores:
-            final_scores["raw_output"] = result.stdout[-1000:]
+        status_msg = "completed" if scores else f"completed_no_scores: {result.stdout[-200:]}"
 
         return BaselineResponse(
             results=final_scores,
-            status="completed",
+            status=status_msg,
         ).model_dump()
     except subprocess.TimeoutExpired:
         return BaselineResponse(
-            results={"clause_identification": 0.001, "risk_assessment": 0.001, "negotiation": 0.001, "error": "Timeout (20 min)"}, 
-            status="timeout"
+            results={"clause_identification": 0.001, "risk_assessment": 0.001, "negotiation": 0.001}, 
+            status="timeout_20min"
         ).model_dump()
     except Exception as e:
         return BaselineResponse(
-            results={"clause_identification": 0.001, "risk_assessment": 0.001, "negotiation": 0.001, "error": str(e)}, 
-            status="error"
+            results={"clause_identification": 0.001, "risk_assessment": 0.001, "negotiation": 0.001}, 
+            status=f"error: {str(e)}"
         ).model_dump()
 
 
