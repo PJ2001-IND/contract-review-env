@@ -200,14 +200,15 @@ class ContractReviewEnvironment(Environment):
             self._done = True
             self._raw_reward += self.REWARD_COMPLETION_BONUS
 
-            # Run grader
-            self._last_grader_score = grade_episode(
+            # Run grader — clamp at every boundary to guarantee (0.001, 0.999)
+            raw_grader = grade_episode(
                 self._state.task_id, self._reviews, self._ground_truth
             )
+            self._last_grader_score = round(min(0.999, max(0.001, float(raw_grader))), 4)
             ContractReviewEnvironment._global_last_grader_score = self._last_grader_score
             ContractReviewEnvironment._global_last_task_id = self._state.task_id
 
-            final_reward = max(0.001, min(0.999, self._last_grader_score))
+            final_reward = round(min(0.999, max(0.001, self._last_grader_score)), 4)
 
             message_parts.append(
                 f"All clauses reviewed! Final grader score: {self._last_grader_score:.4f}. "
@@ -259,7 +260,11 @@ class ContractReviewEnvironment(Environment):
 
     def get_last_grader_score(self) -> Optional[float]:
         """Returns the grader score from the most recently completed episode across any session."""
-        return ContractReviewEnvironment._global_last_grader_score
+        score = ContractReviewEnvironment._global_last_grader_score
+        if score is None:
+            return None
+        # Belt-and-suspenders clamp — never return exact 0.0 or 1.0
+        return round(min(0.999, max(0.001, float(score))), 4)
 
     def _format_full_contract(self) -> str:
         """Format the entire contract as readable text."""
@@ -275,7 +280,7 @@ class ContractReviewEnvironment(Environment):
         """Return a done observation when the episode is already complete."""
         return ContractObservation(
             done=True,
-            reward=0.0,   # Per-step reward only — grader score is separate
+            reward=0.001,   # Strictly > 0 — validator checks all reward fields
             contract_title=self._contract["title"] if self._contract else "",
             contract_text="",
             current_clause_id="",
