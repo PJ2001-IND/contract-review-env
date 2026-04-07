@@ -5,6 +5,7 @@ Adds required additional endpoints: /tasks, /grader, /baseline.
 """
 
 import os
+import re
 import sys
 import subprocess
 
@@ -156,6 +157,51 @@ class GraderResponse(BaseModel):
 class BaselineResponse(BaseModel):
     results: dict
     status: str
+
+
+def _clamp_score(value: float) -> float:
+    """Ensure baseline-reported task scores always stay strictly within (0, 1)."""
+    return round(min(0.999, max(0.001, float(value))), 4)
+
+
+def _parse_baseline_scores(stdout: str) -> dict:
+    """
+    Parse canonical hackathon logs:
+    [START] task=<task> env=<env> model=<model>
+    [END] success=<bool> steps=<n> score=<score> rewards=<...>
+
+    Also keep support for older summary lines like "SCORE - task_id: value".
+    """
+    scores = {}
+    current_task = None
+
+    for raw_line in stdout.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+
+        if line.startswith("[START]"):
+            match = re.search(r"\btask=([^\s]+)", line)
+            if match:
+                current_task = match.group(1)
+            continue
+
+        if line.startswith("[END]"):
+            match = re.search(r"\bscore=([0-9]*\.?[0-9]+)", line)
+            if match and current_task:
+                scores[current_task] = _clamp_score(float(match.group(1)))
+            continue
+
+        if "SCORE" in line.upper():
+            try:
+                parts = line.split(":")
+                if len(parts) >= 2:
+                    key = parts[0].strip().lower().replace("score", "").strip(" -_")
+                    scores[key] = _clamp_score(float(parts[-1].strip()))
+            except (ValueError, IndexError):
+                continue
+
+    return scores
 
 
 @app.get("/")
@@ -368,18 +414,7 @@ async def baseline():
         if result.returncode != 0:
             return BaselineResponse(results=default_scores, status=f"failed: {result.stderr[-200:]}").model_dump()
 
-        scores = {}
-        for line in result.stdout.split("\n"):
-            if "SCORE" in line.upper():
-                try:
-                    parts = line.split(":")
-                    if len(parts) >= 2:
-                        key = parts[0].strip().lower().replace("score", "").strip(" -_")
-                        val = float(parts[-1].strip())
-                        # Absolute final safety clamp for baseline response
-                        scores[key] = round(min(0.999, max(0.001, val)), 4)
-                except (ValueError, IndexError):
-                    pass
+        scores = _parse_baseline_scores(result.stdout)
         
         # Merge parsed scores with defaults to ensure all tasks report a valid score > 0
         final_scores = {**default_scores, **scores}

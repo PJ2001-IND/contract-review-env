@@ -14,6 +14,7 @@ MANDATORY
 import os
 import sys
 import json
+import re
 import textwrap
 from typing import List, Dict, Any, Optional
 
@@ -27,10 +28,9 @@ sys.path.insert(0, os.path.join(_script_dir, "server"))
 sys.path.insert(0, os.path.join(_script_dir, "contract_review_env"))
 sys.path.insert(0, os.path.join(_script_dir, "contract_review_env", "server"))
 
-from models import ContractAction, ContractObservation
-from contracts import get_contract_for_task, get_ground_truth_issues, get_task_ids
+from models import ContractAction
+from contracts import get_task_ids
 from server.environment import ContractReviewEnvironment
-from graders import grade_episode
 
 
 # ── Configuration ─────────────────────────────────────────────────────────────
@@ -159,14 +159,44 @@ def parse_llm_response(response_text: str, clause_id: str) -> ContractAction:
             )
 
 
+def _clamp_score(value: float) -> float:
+    """Ensure all reported task scores stay strictly within (0, 1)."""
+    return round(min(0.999, max(0.001, float(value))), 4)
+
+
+def _sanitize_single_line(value: Optional[str]) -> str:
+    """Collapse whitespace so log values always stay on one line."""
+    if value is None:
+        return "null"
+    cleaned = re.sub(r"\s+", " ", str(value)).strip()
+    return cleaned if cleaned else "null"
+
+
+def _format_action(action: ContractAction) -> str:
+    """Return a compact validator-friendly action string."""
+    severity = action.severity or "null"
+    return f"review('{action.clause_id}','{action.action_type}','{severity}')"
+
+
 def log_start(task: str, env: str, model: str) -> None:
-    print(f"[START] {json.dumps({'task': task, 'env': env, 'model': model})}", flush=True)
+    print(f"[START] task={task} env={env} model={model}", flush=True)
 
 def log_step(step: int, action: Any, reward: float, done: bool, error: Optional[str] = None) -> None:
-    print(f"[STEP] {json.dumps({'step': step, 'action': action, 'reward': reward, 'done': done, 'error': error})}", flush=True)
+    error_val = _sanitize_single_line(error)
+    done_val = str(done).lower()
+    action_str = _sanitize_single_line(action)
+    print(
+        f"[STEP] step={step} action={action_str} reward={reward:.2f} done={done_val} error={error_val}",
+        flush=True,
+    )
 
 def log_end(success: bool, steps: int, score: float, rewards: List[float]) -> None:
-    print(f"[END] {json.dumps({'success': success, 'steps': steps, 'score': score, 'rewards': rewards})}", flush=True)
+    rewards_str = ",".join(f"{r:.2f}" for r in rewards)
+    safe_score = _clamp_score(score)
+    print(
+        f"[END] success={str(success).lower()} steps={steps} score={safe_score:.3f} rewards={rewards_str}",
+        flush=True,
+    )
 
 
 def run_task(
@@ -231,10 +261,10 @@ def run_task(
             rewards.append(reward)
 
             log_step(
-                step=step, 
-                action=action.model_dump() if hasattr(action, 'model_dump') else action.dict(), 
-                reward=reward, 
-                done=obs.done, 
+                step=step,
+                action=_format_action(action),
+                reward=reward,
+                done=obs.done,
                 error=error_msg
             )
 
@@ -242,6 +272,7 @@ def run_task(
         grader_score = env.get_last_grader_score()
         if grader_score is None:
             grader_score = 0.001
+        grader_score = _clamp_score(grader_score)
         success = grader_score >= 0.5
         log_end(success=success, steps=step, score=grader_score, rewards=rewards)
         return grader_score
