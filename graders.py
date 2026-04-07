@@ -1,6 +1,6 @@
 """
 Deterministic graders for the three contract review tasks.
-Each grader scores agent performance on a 0.0–1.0 scale.
+Each grader returns a float strictly in (0, 1) exclusive — never exactly 0.0 or 1.0.
 Uses multi-factor scoring: keyword coverage, sequence similarity, and length signals.
 """
 
