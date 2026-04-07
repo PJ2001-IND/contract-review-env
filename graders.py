@@ -49,7 +49,7 @@ def clause_identification_grader(
         return 0.0
 
     score = 0.6 * recall + 0.4 * precision
-    return round(min(1.0, max(0.0, score)), 4)
+    return round(min(0.999, max(0.001, score)), 4)
 
 
 def risk_assessment_grader(
@@ -106,7 +106,7 @@ def risk_assessment_grader(
     reasoning_avg = sum(reasoning_scores) / len(reasoning_scores) if reasoning_scores else 0.0
 
     score = 0.50 * detection + 0.30 * severity_score + 0.20 * reasoning_avg
-    return round(min(1.0, max(0.0, score)), 4)
+    return round(min(0.999, max(0.001, score)), 4)
 
 
 def negotiation_grader(
@@ -189,7 +189,7 @@ def negotiation_grader(
         + 0.30 * amendment_avg
         + 0.20 * max(0.0, precision_score)
     )
-    return round(min(1.0, max(0.0, score)), 4)
+    return round(min(0.999, max(0.001, score)), 4)
 
 
 # ── Grader registry ───────────────────────────────────────────────────────────
