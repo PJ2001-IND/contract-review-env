@@ -63,11 +63,11 @@ def main():
                 sev_input = input("Severity [critical / moderate / minor]: ").strip().lower()
             severity = sev_input
             
-        reasoning = input("Reasoning (Why?): ").strip()
+        reasoning = input("Reasoning (Why?): ").strip() or "No reasoning provided"
         
         suggested_text = None
         if a_type == "suggest_amendment":
-            suggested_text = input("Suggested Amendment Text: ").strip()
+            suggested_text = input("Suggested Amendment Text: ").strip() or None
             
         action = ContractAction(
             clause_id=obs.current_clause_id,
@@ -78,7 +78,8 @@ def main():
         )
         
         obs = env.step(action)
-        print(f"\n✅ Action Processed. Reward Earned: {obs.reward:+.4f}")
+        reward_display = obs.reward if obs.reward is not None else 0.0
+        print(f"\n✅ Action Processed. Reward Earned: {reward_display:+.4f}")
         print(f"Response: {obs.message}")
         print("-" * 60)
         
