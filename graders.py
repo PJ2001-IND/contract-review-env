@@ -41,7 +41,9 @@ def _amendment_quality_score(suggested: str, hint: str, keywords: List[str]) -> 
 
     # 3. Length adequacy — reward substantive amendments (>20 words)
     word_count = len(s.split())
-    if word_count >= 20:
+    if word_count > 80:
+        length_bonus = 0.01  # Anti-exploit: penalize keyword stuffing/spam
+    elif word_count >= 20:
         length_bonus = 0.999
     elif word_count >= 10:
         length_bonus = 0.7
@@ -60,6 +62,8 @@ def _reasoning_quality_score(reasoning: str, keywords: List[str]) -> float:
         return 0.01
     kw = _keyword_match_score(reasoning, keywords) if keywords else 0.3
     words = len(reasoning.split())
+    if words > 100:
+        return 0.01  # Anti-exploit boundary
     length = min(0.999, words / 30.0)  # Saturates at 30 words
     return round(min(0.999, max(0.01, 0.6 * kw + 0.4 * length)), 4)
 

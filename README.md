@@ -24,13 +24,13 @@ license: mit
 
 ## 📌 Overview
 
-This environment simulates a real-world contract review task where an AI agent must:
+This environment simulates a real-world, non-linear contract review task where an AI agent must manage a 20-step budget to:
 
-1. **Read** software/business contracts clause by clause
-2. **Identify** problematic or risky clauses
-3. **Classify** risk severity (critical, moderate, minor)
-4. **Suggest** specific amendments with better wording
-5. **Negotiate** terms while considering clause interdependencies
+1. **Search** and **Navigate** the contract using tools like a legal investigator.
+2. **Read** specific clauses based on finding risks and cross-references.
+3. **Flag** problematic or risky clauses with a severity (critical, moderate, minor).
+4. **Suggest** specific amendments with better wording.
+5. **Finish** the review before time runs out.
 
 The environment is fully compliant with the **OpenEnv specification** and exposes a standard HTTP + WebSocket API for agent interaction, deterministic graders, and partial reward shaping throughout each episode.
 
@@ -52,10 +52,11 @@ The environment is fully compliant with the **OpenEnv specification** and expose
 
 ```python
 class ContractAction:
-    clause_id: str          # "c1", "c2", etc.
-    action_type: str        # "approve" | "flag_risk" | "suggest_amendment" | "reject"
+    action_type: str        # "read_clause" | "search_contract" | "flag_issue" | "suggest_amendment" | "finish_review"
+    clause_id: str | None   # "c1", "c2" (required for read/flag/amend)
+    search_query: str | None # Keyword (required for search_contract)
     severity: str | None    # "critical" | "moderate" | "minor" (required for flag/amend)
-    reasoning: str          # Why you're taking this action
+    reasoning: str | None   # Why you're taking this action
     suggested_text: str | None  # Proposed amendment (for suggest_amendment)
 ```
 
@@ -64,16 +65,15 @@ class ContractAction:
 ```python
 class ContractObservation:
     contract_title: str         # Title of the contract
-    contract_text: str          # Full contract text
-    current_clause_id: str      # ID of clause under review (e.g. "c3")
-    current_clause_title: str   # Human-readable title
-    current_clause_text: str    # Full clause text
-    clause_index: int           # 0-based position
+    table_of_contents: list     # List of all clauses available in the contract
+    active_view: str            # Current viewport state ("toc" | "search_results" | "clause_detail")
+    view_content: str           # The textual content of the active view
+    flagged_issues: list        # History of the agent's tracked flags/amendments
+    steps_remaining: int        # Step count down from 20 limit
     total_clauses: int          # Total clauses in contract
-    reviewed_clauses: list      # History of previous reviews
     task_id: str                # Current task identifier
     task_description: str       # What the agent should do
-    message: str                # Feedback from environment
+    message: str                # Feedback/Results from the environment
     done: bool                  # Whether episode is complete
     reward: float | None        # Reward for the step
 ```
@@ -91,7 +91,7 @@ The reward function provides **partial progress signals** throughout the episode
 | ✅ Good amendment | `+0.10` | Suggested text addresses key concerns |
 | ❌ False positive | `−0.05` | Flagged a clean clause as problematic |
 | ⏱️ Time pressure | `−0.02` | Per step (prevents infinite loops) |
-| 🎉 Completion bonus | `+0.20` | Reviewed all clauses |
+| 🎉 Completion bonus | `Variable` | Scaled based on remaining budget and overall Grader score |
 
 > 📊 Final score is determined by the task-specific **grader** returning a float strictly between `0` and `1` (exclusive — never exactly `0.0` or `1.0`).
 
@@ -137,14 +137,6 @@ export HF_TOKEN="your_token_here"
 python inference.py
 ```
 
-### Play Interactively (Human Demo)
-
-```bash
-# Play the role of the AI agent yourself in the terminal
-uv run python play_demo.py
-```
-
----
 
 ## 🔌 API Endpoints
 
@@ -183,7 +175,6 @@ contract_review_env/
 ├── contracts.py           # 3 synthetic contracts with embedded issues
 ├── graders.py             # Deterministic graders — scores strictly in (0, 1)
 ├── inference.py           # Baseline LLM agent script
-├── play_demo.py           # Interactive terminal demo (human player)
 └── server/
     ├── __init__.py        # Server module exports
     ├── environment.py     # Core environment logic

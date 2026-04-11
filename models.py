@@ -37,16 +37,17 @@ except ImportError:
 
 
 class ContractAction(Action):
-    """Action the agent takes on a contract clause."""
-    clause_id: str = Field(..., description="ID of the clause to act on (e.g. 'c1')")
-    action_type: Literal["flag_risk", "suggest_amendment", "approve", "reject"] = Field(
-        ..., description="Type of action to take on the clause"
+    """Action the agent takes on the contract."""
+    action_type: Literal["read_clause", "search_contract", "flag_issue", "suggest_amendment", "finish_review"] = Field(
+        ..., description="Type of action to take"
     )
+    clause_id: Optional[str] = Field(None, description="ID of the clause (used for read_clause, flag_issue, suggest_amendment)")
+    search_query: Optional[str] = Field(None, description="Query string (used for search_contract)")
     severity: Optional[Literal["critical", "moderate", "minor"]] = Field(
-        None, description="Severity of the identified risk (required when action_type is 'flag_risk' or 'suggest_amendment')"
+        None, description="Severity (required when action_type is 'flag_issue' or 'suggest_amendment')"
     )
-    reasoning: str = Field(
-        ..., description="Explanation of why this action is being taken"
+    reasoning: Optional[str] = Field(
+        None, description="Explanation for the issue or amendment"
     )
     suggested_text: Optional[str] = Field(
         None, description="Proposed amendment text (used when action_type is 'suggest_amendment')"
@@ -67,13 +68,12 @@ class ClauseReview(Action):
 class ContractObservation(Observation):
     """What the agent observes after each step."""
     contract_title: str = Field("", description="Title of the contract being reviewed")
-    contract_text: str = Field("", description="Full contract text")
-    current_clause_id: str = Field("", description="ID of the current clause under review")
-    current_clause_title: str = Field("", description="Title of the current clause")
-    current_clause_text: str = Field("", description="Text of the current clause")
-    clause_index: int = Field(0, description="0-based index of current clause")
+    table_of_contents: List[dict] = Field(default_factory=list, description="List of all clauses {id, title}")
+    active_view: str = Field("toc", description="What the agent is currently looking at: 'toc', 'search_results', 'clause_detail'")
+    view_content: str = Field("", description="Text content corresponding to the active_view")
+    flagged_issues: List[dict] = Field(default_factory=list, description="History of issues flagged by agent")
+    steps_remaining: int = Field(0, description="Steps left before forced termination")
     total_clauses: int = Field(0, description="Total number of clauses in the contract")
-    reviewed_clauses: List[dict] = Field(default_factory=list, description="History of reviewed clauses")
     task_id: str = Field("", description="ID of the current task")
     task_description: str = Field("", description="Description of what the agent should do")
     message: str = Field("", description="Feedback message from the environment")

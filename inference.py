@@ -20,11 +20,10 @@ from typing import List, Dict, Any, Optional
 
 from openai import OpenAI
 
-# Add the environment package to path — works from repo root or parent
+# Add the environment package to path
 _script_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _script_dir)
 sys.path.insert(0, os.path.join(_script_dir, "server"))
-# Also check parent (when inference.py is run from outside)
 sys.path.insert(0, os.path.join(_script_dir, "contract_review_env"))
 sys.path.insert(0, os.path.join(_script_dir, "contract_review_env", "server"))
 
@@ -41,7 +40,7 @@ HF_TOKEN = os.getenv("HF_TOKEN")
 LOCAL_IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME")
 
 TEMPERATURE = 0.1
-MAX_TOKENS = 500
+MAX_TOKENS = 600
 
 DEBUG = os.getenv("DEBUG", "false").lower() == "true"
 
@@ -49,77 +48,60 @@ DEBUG = os.getenv("DEBUG", "false").lower() == "true"
 # ── System prompt for the contract review agent ──────────────────────────────
 
 SYSTEM_PROMPT = textwrap.dedent("""
-    You are a contract review AI agent. You analyze contract clauses and determine
-    whether they are acceptable (approve) or problematic (flag_risk/suggest_amendment).
+    You are a legal contract review AI agent. Your goal is to review a contract, locate problematic clauses, and flag them or suggest amendments before you run out of steps. You do this by actively searching, reading specific clauses, and flagging risks.
 
-    For EACH clause you must respond with a single JSON object (no other text):
-    {
-        "clause_id": "<the clause ID, e.g. c1>",
-        "action_type": "<approve | flag_risk | suggest_amendment>",
-        "severity": "<critical | moderate | minor | null>",
-        "reasoning": "<your explanation>",
-        "suggested_text": "<proposed amendment text or null>"
-    }
+    You MUST respond with a single valid JSON object representing your next action. No additional text or markdown formatting outside the JSON is allowed.
 
-    Rules:
-    - If a clause looks standard and fair, use "approve" with severity null.
-    - If you spot problematic terms, use "flag_risk" with appropriate severity.
-    - If you can propose better wording, use "suggest_amendment" with suggested_text.
-    - severity is required for flag_risk and suggest_amendment.
-    - Be specific in reasoning — mention the exact problematic language.
-    - Respond ONLY with the JSON object, no markdown, no explanation outside the JSON.
+    Available Actions (choose ONE per turn):
+
+    1. Read a Clause:
+    { "action_type": "read_clause", "clause_id": "<id>" }
+
+    2. Search the Contract:
+    { "action_type": "search_contract", "search_query": "<query>" }
+
+    3. Flag an Issue:
+    { "action_type": "flag_issue", "clause_id": "<id>", "severity": "<critical | moderate | minor>", "reasoning": "<explain why>" }
+
+    4. Suggest an Amendment:
+    { "action_type": "suggest_amendment", "clause_id": "<id>", "severity": "<critical | moderate | minor>", "reasoning": "<explain why>", "suggested_text": "<new text>" }
+
+    5. Finish Review (call this when you have flagged all risks you could find):
+    { "action_type": "finish_review" }
+
+    Important Strategy:
+    - You cannot read the entire contract easily. Use the Table of Contents or `search_contract` (e.g. for "liability", "indemnify", "renew", "data") to jump directly to risky clauses.
+    - Always output raw JSON.
 """).strip()
 
 
-def build_user_prompt(
-    task_description: str,
-    contract_title: str,
-    clause_id: str,
-    clause_title: str,
-    clause_text: str,
-    clause_index: int,
-    total_clauses: int,
-    reviewed_clauses: List[Dict[str, Any]],
-    message: str,
-) -> str:
-    """Build the user prompt for the LLM."""
-    # Summarize previous reviews
-    history = ""
-    if reviewed_clauses:
-        history_lines = []
-        for r in reviewed_clauses[-5:]:  # Last 5 reviews for context
-            history_lines.append(
-                f"  - {r.get('clause_id', '?')} ({r.get('clause_title', '?')}): "
-                f"{r.get('action_type', '?')}"
-                + (f" [severity: {r.get('severity')}]" if r.get('severity') else "")
-            )
-        history = "\nPrevious reviews:\n" + "\n".join(history_lines)
+def build_user_prompt(obs: Any) -> str:
+    """Build the user prompt from the observation."""
+    flags_text = "None"
+    if obs.flagged_issues:
+        flags_text = ", ".join(f"{f['clause_id']} ({f['action_type']})" for f in obs.flagged_issues)
 
     return textwrap.dedent(f"""
-        Contract: {contract_title}
-        Task: {task_description}
+        Task: {obs.task_description}
 
-        Clause {clause_index + 1} of {total_clauses}
-        Clause ID: {clause_id}
-        Clause Title: {clause_title}
+        Contract Title: {obs.contract_title}
+        Total Clauses: {obs.total_clauses}
+        Steps Remaining: {obs.steps_remaining}
 
-        --- CLAUSE TEXT ---
-        {clause_text}
-        --- END CLAUSE ---
-        {history}
+        --- CURRENT VIEW ({obs.active_view}) ---
+        {obs.view_content}
+        ----------------------------------------
 
-        Environment message: {message}
+        Environment Message: {obs.message}
+        Issues Flagged So Far: {flags_text}
 
-        Respond with a JSON object for your review of clause {clause_id}.
+        Based on the current view, choose your next action. Output a valid JSON object.
     """).strip()
 
 
-def parse_llm_response(response_text: str, clause_id: str) -> ContractAction:
+def parse_llm_response(response_text: str) -> ContractAction:
     """Parse the LLM's response into a ContractAction."""
-    # Try to extract JSON from the response
     text = response_text.strip()
-
-    # Handle markdown code blocks
     if "```json" in text:
         text = text.split("```json")[1].split("```")[0].strip()
     elif "```" in text:
@@ -127,45 +109,24 @@ def parse_llm_response(response_text: str, clause_id: str) -> ContractAction:
 
     try:
         data = json.loads(text)
-        return ContractAction(
-            clause_id=data.get("clause_id", clause_id),
-            action_type=data.get("action_type", "approve"),
-            severity=data.get("severity"),
-            reasoning=data.get("reasoning", "No reasoning provided"),
-            suggested_text=data.get("suggested_text"),
-        )
-    except (json.JSONDecodeError, Exception) as e:
+        return ContractAction(**data)
+    except Exception as e:
         if DEBUG:
             print(f"  [DEBUG] JSON parse failed: {e}")
-            print(f"  [DEBUG] Raw response: {text[:200]}")
-
-        # Fallback: try to infer from text
-        text_lower = text.lower()
-        if any(kw in text_lower for kw in ["problematic", "risk", "concern", "unfair", "unlimited", "critical"]):
-            return ContractAction(
-                clause_id=clause_id,
-                action_type="flag_risk",
-                severity="moderate",
-                reasoning=text[:200] if text else "Detected potential risk",
-                suggested_text=None,
-            )
+        # Fallback heuristic
+        if "search" in text.lower():
+            return ContractAction(action_type="search_contract", search_query="liability")
+        elif "finish" in text.lower() or "done" in text.lower():
+            return ContractAction(action_type="finish_review")
         else:
-            return ContractAction(
-                clause_id=clause_id,
-                action_type="approve",
-                severity=None,
-                reasoning=text[:200] if text else "Clause appears standard",
-                suggested_text=None,
-            )
+            return ContractAction(action_type="read_clause", clause_id="c1")
 
 
 def _clamp_score(value: float) -> float:
-    """Ensure all reported task scores stay strictly within (0, 1)."""
     return round(min(0.999, max(0.01, float(value))), 4)
 
 
 def _sanitize_single_line(value: Optional[str]) -> str:
-    """Collapse whitespace so log values always stay on one line."""
     if value is None:
         return "null"
     cleaned = re.sub(r"\s+", " ", str(value)).strip()
@@ -173,9 +134,14 @@ def _sanitize_single_line(value: Optional[str]) -> str:
 
 
 def _format_action(action: ContractAction) -> str:
-    """Return a compact validator-friendly action string."""
-    severity = action.severity or "null"
-    return f"review('{action.clause_id}','{action.action_type}','{severity}')"
+    a = action.action_type
+    if a == "search_contract":
+        return f"search('{action.search_query}')"
+    elif a == "read_clause":
+        return f"read('{action.clause_id}')"
+    elif a in ("flag_issue", "suggest_amendment"):
+        return f"flag('{action.clause_id}','{action.severity}')"
+    return "finish()"
 
 
 def log_start(task: str, env: str, model: str) -> None:
@@ -204,7 +170,6 @@ def run_task(
     env: ContractReviewEnvironment,
     task_id: str,
 ) -> float:
-    """Run a single task and return the grader score."""
     log_start(task=task_id, env="contract_review_env", model=MODEL_NAME)
 
     step = 0
@@ -213,28 +178,15 @@ def run_task(
     success = False
 
     try:
-        # Reset environment
         obs = env.reset(task_id=task_id)
 
         while not obs.done:
             step += 1
             if DEBUG:
-                print(f"  [DEBUG] Reviewing clause {obs.current_clause_id} — '{obs.current_clause_title}'")
+                print(f"  [DEBUG] Active view: {obs.active_view}")
 
-            # Build prompt
-            user_prompt = build_user_prompt(
-                task_description=obs.task_description,
-                contract_title=obs.contract_title,
-                clause_id=obs.current_clause_id,
-                clause_title=obs.current_clause_title,
-                clause_text=obs.current_clause_text,
-                clause_index=obs.clause_index,
-                total_clauses=obs.total_clauses,
-                reviewed_clauses=obs.reviewed_clauses,
-                message=obs.message,
-            )
+            user_prompt = build_user_prompt(obs)
 
-            # Call LLM
             try:
                 completion = client.chat.completions.create(
                     model=MODEL_NAME,
@@ -252,10 +204,8 @@ def run_task(
                 error_msg = str(exc)
                 response_text = ""
 
-            # Parse action
-            action = parse_llm_response(response_text, obs.current_clause_id)
+            action = parse_llm_response(response_text)
 
-            # Step environment
             obs = env.step(action)
             reward = obs.reward if obs.reward is not None else 0.01
             rewards.append(reward)
@@ -268,7 +218,6 @@ def run_task(
                 error=error_msg
             )
 
-        # Get grader score
         grader_score = env.get_last_grader_score()
         if grader_score is None:
             grader_score = 0.01
@@ -280,37 +229,23 @@ def run_task(
     except Exception as e:
         if DEBUG:
             print(f"  [CRITICAL ERROR] {e}")
-        # ALWAYS print an [END] log even if crash, to prevent Validator falling back to exactly 0.0
         log_end(success=False, steps=step, score=0.01, rewards=rewards)
         return 0.01
 
 
 def main() -> None:
-    """Run inference on all 3 tasks and report scores."""
     if DEBUG:
         print("=" * 60)
         print("CONTRACT REVIEW ENVIRONMENT — BASELINE INFERENCE")
         print("=" * 60)
-        print(f"API_BASE_URL: {API_BASE_URL}")
-        print(f"MODEL_NAME:   {MODEL_NAME}")
-        print(f"HF_TOKEN:     {'***' + HF_TOKEN[-4:] if HF_TOKEN else 'NOT SET'}")
-        if LOCAL_IMAGE_NAME:
-            print(f"LOCAL_IMAGE_NAME: {LOCAL_IMAGE_NAME}")
-        print()
 
-    if not HF_TOKEN and DEBUG:
-        print("WARNING: No HF_TOKEN set. Running with empty key — LLM calls may fail.")
-
-    # Initialize OpenAI client
     client_kwargs = {"api_key": HF_TOKEN or "dummy"}
     if API_BASE_URL:
         client_kwargs["base_url"] = API_BASE_URL
     client = OpenAI(**client_kwargs)
 
-    # Initialize environment (direct, no server needed)
     env = ContractReviewEnvironment()
 
-    # Run all tasks
     task_ids = get_task_ids()
     scores = {}
 
@@ -321,20 +256,13 @@ def main() -> None:
         except Exception as exc:
             if DEBUG:
                 print(f"\n  [ERROR] Task {task_id} failed: {exc}")
-            scores[task_id] = 0.01  # Strictly > 0 per validator requirement
+            scores[task_id] = 0.01
 
-
-    # Summary
     if DEBUG:
         print("\n" + "=" * 60)
-        print("BASELINE RESULTS SUMMARY")
-        print("=" * 60)
         for task_id, score in scores.items():
             print(f"  SCORE - {task_id}: {score:.4f}")
-        avg = sum(scores.values()) / len(scores) if scores else 0.0
-        print(f"\n  AVERAGE SCORE: {avg:.4f}")
         print("=" * 60)
-
 
 if __name__ == "__main__":
     main()

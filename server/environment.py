@@ -27,14 +27,12 @@ from graders import grade_episode
 class ContractReviewEnvironment(Environment):
     """
     OpenEnv-compatible environment for contract review.
-
-    The agent reviews a contract clause-by-clause, taking actions
-    (approve, flag_risk, suggest_amendment, reject) on each clause.
+    Now acts as a non-linear search and retrieval environment where the agent
+    must actively decide what to read, search, and when to conclude the review.
     """
 
     SUPPORTS_CONCURRENT_SESSIONS = True
     
-    # Store the last completed score globally for the stateless /grader HTTP endpoint
     _global_last_grader_score: Optional[float] = None
     _global_last_task_id: Optional[str] = None
 
@@ -43,14 +41,14 @@ class ContractReviewEnvironment(Environment):
     REWARD_CORRECT_SEVERITY = 0.10
     REWARD_GOOD_AMENDMENT = 0.10
     PENALTY_FALSE_POSITIVE = -0.05
-    PENALTY_PER_STEP = -0.02
+    PENALTY_PER_STEP = -0.01
     REWARD_COMPLETION_BONUS = 0.20
+    MAX_STEPS = 20
 
     def __init__(self):
         self._state = ContractState()
         self._contract: Optional[dict] = None
         self._clauses: List[dict] = []
-        self._current_clause_idx: int = 0
         self._ground_truth: dict = {}
         self._reviews: list = []
         self._raw_reward: float = 0.0
@@ -71,7 +69,6 @@ class ContractReviewEnvironment(Environment):
         self._contract = get_contract_for_task(task_id)
         self._clauses = self._contract["clauses"]
         self._ground_truth = get_ground_truth_issues(self._contract)
-        self._current_clause_idx = 0
         self._reviews = []
         self._raw_reward = 0.0
         self._done = False
@@ -90,21 +87,22 @@ class ContractReviewEnvironment(Environment):
             cumulative_reward=0.0,
         )
 
-        clause = self._clauses[0]
+        toc = [{"id": c["id"], "title": c["title"]} for c in self._clauses]
+        toc_text = "\n".join([f"- [{c['id']}] {c['title']}" for c in self._clauses])
+
         return ContractObservation(
             done=False,
             reward=0.01,
             contract_title=self._contract["title"],
-            contract_text=self._format_full_contract(),
-            current_clause_id=clause["id"],
-            current_clause_title=clause["title"],
-            current_clause_text=clause["text"],
-            clause_index=0,
+            table_of_contents=toc,
+            active_view="toc",
+            view_content=f"Table of Contents:\n{toc_text}",
+            flagged_issues=[],
+            steps_remaining=self.MAX_STEPS,
             total_clauses=len(self._clauses),
-            reviewed_clauses=[],
             task_id=task_id,
             task_description=self._contract["metadata"]["task_description"],
-            message=f"Review started. You have {len(self._clauses)} clauses to review. Begin with clause '{clause['title']}'.",
+            message=f"Review started. {self.MAX_STEPS} steps remaining. You can use 'read_clause', 'search_contract', 'flag_issue', 'suggest_amendment', or 'finish_review'.",
         )
 
     def step(
@@ -117,137 +115,153 @@ class ContractReviewEnvironment(Environment):
         if self._done:
             return self._make_done_observation("Episode already completed.")
 
-        # Validate action type
         if not isinstance(action, ContractAction):
-            # Try to coerce from dict/Action
             if isinstance(action, dict):
                 action = ContractAction(**action)
             elif hasattr(action, 'model_dump'):
                 action = ContractAction(**action.model_dump())
 
         self._state.step_count += 1
+        steps_left = max(0, self.MAX_STEPS - self._state.step_count)
         step_reward = self.PENALTY_PER_STEP  # Time pressure
-
-        current_clause = self._clauses[self._current_clause_idx]
-        clause_id = current_clause["id"]
-
-        # Score the action against ground truth
-        has_issue = clause_id in self._ground_truth
-        is_flag = action.action_type in ("flag_risk", "suggest_amendment", "reject")
-
         message_parts = []
+        active_view = "toc"
+        view_content = ""
 
-        if has_issue and is_flag:
-            # TRUE POSITIVE
-            step_reward += self.REWARD_CORRECT_FLAG
-            self._state.issues_found += 1
-            message_parts.append("Correctly identified a problematic clause.")
+        # Base TOC logic
+        toc = [{"id": c["id"], "title": c["title"]} for c in self._clauses]
+        toc_text = "\n".join([f"- [{c['id']}] {c['title']}" for c in self._clauses])
 
-            expected_severity = self._ground_truth[clause_id][0].get("severity", "")
-            if action.severity == expected_severity:
-                step_reward += self.REWARD_CORRECT_SEVERITY
-                self._state.correct_severities += 1
-                message_parts.append(f"Severity '{action.severity}' is correct.")
+        act = action.action_type
+        if act == "read_clause":
+            active_view = "clause_detail"
+            clause = next((c for c in self._clauses if c["id"] == action.clause_id), None)
+            if clause:
+                view_content = f"CLAUSE {clause['id'].upper()} - {clause['title']}\n{('-'*40)}\n{clause['text']}"
+                message_parts.append(f"Reading clause {clause['id']}.")
             else:
-                message_parts.append(f"Severity '{action.severity}' — expected '{expected_severity}'.")
+                view_content = f"Error: Clause ID '{action.clause_id}' not found."
+                message_parts.append("Clause not found.")
+                step_reward += self.PENALTY_FALSE_POSITIVE # Slight penalty for hallucinating ID
 
-            if action.action_type == "suggest_amendment" and action.suggested_text:
-                self._state.amendments_suggested += 1
-                hint = self._ground_truth[clause_id][0].get("amendment_hint", "")
-                hint_words = set(hint.lower().split())
-                suggested_words = set(action.suggested_text.lower().split())
-                if hint_words:
-                    overlap = len(hint_words & suggested_words) / len(hint_words)
-                    if overlap > 0.2:
-                        step_reward += self.REWARD_GOOD_AMENDMENT
-                        message_parts.append("Amendment suggestion addresses key concerns.")
+        elif act == "search_contract":
+            active_view = "search_results"
+            query = (action.search_query or "").lower()
+            if not query:
+                view_content = "Please provide a valid search_query."
+                message_parts.append("Empty search query.")
+            else:
+                matches = []
+                for c in self._clauses:
+                    if query in c["text"].lower() or query in c["title"].lower():
+                        text = c["text"]
+                        idx = text.lower().find(query)
+                        start = max(0, idx - 40)
+                        end = min(len(text), idx + 40)
+                        excerpt = text[start:end].replace("\n", " ")
+                        matches.append(f"- [{c['id']}] {c['title']}: ...{excerpt}...")
+                if matches:
+                    view_content = f"Search results for '{query}':\n" + "\n".join(matches)
+                    message_parts.append(f"Found {len(matches)} matches.")
+                else:
+                    view_content = f"No matches found for '{query}'."
+                    message_parts.append("No search matches.")
 
-        elif not has_issue and is_flag:
-            # FALSE POSITIVE
-            step_reward += self.PENALTY_FALSE_POSITIVE
-            self._state.false_positives += 1
-            message_parts.append("This clause appears standard — flagging may be a false positive.")
+        elif act in ("flag_issue", "suggest_amendment"):
+            active_view = "toc"
+            view_content = toc_text
+            cid = action.clause_id
+            
+            # Record it
+            issue_record = {
+                "clause_id": cid,
+                "action_type": act,
+                "severity": action.severity,
+                "reasoning": action.reasoning,
+                "suggested_text": action.suggested_text,
+            }
+            
+            # Identify duplicates
+            is_dup = any(r["clause_id"] == cid for r in self._reviews)
+            if not is_dup and cid:
+                self._reviews.append(issue_record)
+                has_issue = cid in self._ground_truth
+                
+                if has_issue:
+                    step_reward += self.REWARD_CORRECT_FLAG
+                    self._state.issues_found += 1
+                    message_parts.append(f"Flagged clause {cid}. Valid issue detected.")
+                    expected_severity = self._ground_truth[cid][0].get("severity", "")
+                    if action.severity == expected_severity:
+                        step_reward += self.REWARD_CORRECT_SEVERITY
+                        self._state.correct_severities += 1
+                    if act == "suggest_amendment" and action.suggested_text:
+                        self._state.amendments_suggested += 1
+                        hint = self._ground_truth[cid][0].get("amendment_hint", "")
+                        overlap = len(set(hint.lower().split()) & set(action.suggested_text.lower().split()))
+                        if overlap > 3:
+                            step_reward += self.REWARD_GOOD_AMENDMENT
+                else:
+                    step_reward += self.PENALTY_FALSE_POSITIVE
+                    self._state.false_positives += 1
+                    message_parts.append(f"Flagged clause {cid}. This might be a false positive.")
+            else:
+                if not cid:
+                    message_parts.append("No clause ID provided.")
+                else:
+                    message_parts.append(f"Clause {cid} was already flagged. Ignored duplicate.")
 
-        elif has_issue and not is_flag:
-            # FALSE NEGATIVE
-            message_parts.append("Clause approved.")
+        elif act == "finish_review":
+            self._done = True
+            message_parts.append("Review finished by agent.")
 
         else:
-            # TRUE NEGATIVE
-            message_parts.append("Clause approved — looks standard.")
+            active_view = "toc"
+            view_content = toc_text
+            message_parts.append("Unknown action type.")
 
-        # Record review
-        review = {
-            "clause_id": clause_id,
-            "clause_title": current_clause["title"],
-            "action_type": action.action_type,
-            "severity": action.severity,
-            "reasoning": action.reasoning,
-            "suggested_text": action.suggested_text,
-            "reward_earned": step_reward,
-        }
-        self._reviews.append(review)
-
-        # Accumulate reward
         self._raw_reward += step_reward
         self._state.cumulative_reward = self._raw_reward
 
-        # Advance to next clause
-        self._current_clause_idx += 1
-
-        if self._current_clause_idx >= len(self._clauses):
-            # Episode complete
+        if steps_left <= 0:
             self._done = True
-            self._raw_reward += self.REWARD_COMPLETION_BONUS
+            message_parts.append("Step limit reached.")
 
-            # Run grader — clamp at every boundary to guarantee (0.01, 0.999)
-            raw_grader = grade_episode(
-                self._state.task_id, self._reviews, self._ground_truth
-            )
+        if self._done:
+            self._raw_reward += self.REWARD_COMPLETION_BONUS
+            raw_grader = grade_episode(self._state.task_id, self._reviews, self._ground_truth)
             self._last_grader_score = round(min(0.999, max(0.01, float(raw_grader))), 4)
             ContractReviewEnvironment._global_last_grader_score = self._last_grader_score
             ContractReviewEnvironment._global_last_task_id = self._state.task_id
-
+            
             final_reward = round(min(0.999, max(0.01, self._last_grader_score)), 4)
-
-            message_parts.append(
-                f"All clauses reviewed! Final grader score: {self._last_grader_score:.4f}. "
-                f"Issues found: {self._state.issues_found}/{self._state.total_issues}. "
-                f"False positives: {self._state.false_positives}."
-            )
-
+            msg = f"Episode completed! Final Grader Score: {self._last_grader_score:.4f}. Issues found: {self._state.issues_found}/{self._state.total_issues}."
+            
             return ContractObservation(
                 done=True,
                 reward=final_reward,
                 contract_title=self._contract["title"],
-                contract_text=self._format_full_contract(),
-                current_clause_id=clause_id,
-                current_clause_title=current_clause["title"],
-                current_clause_text=current_clause["text"],
-                clause_index=self._current_clause_idx - 1,
+                table_of_contents=toc,
+                active_view="toc",
+                view_content=toc_text,
+                flagged_issues=self._reviews,
+                steps_remaining=0,
                 total_clauses=len(self._clauses),
-                reviewed_clauses=self._reviews,
                 task_id=self._state.task_id,
                 task_description=self._contract["metadata"]["task_description"],
-                message=" ".join(message_parts),
+                message=msg,
             )
-
-        # Not done — show next clause
-        next_clause = self._clauses[self._current_clause_idx]
-        remaining = len(self._clauses) - self._current_clause_idx
-        message_parts.append(f"{remaining} clause(s) remaining. Next: '{next_clause['title']}'.")
 
         return ContractObservation(
             done=False,
             reward=round(min(0.999, max(0.01, float(step_reward))), 4),
             contract_title=self._contract["title"],
-            contract_text=self._format_full_contract(),
-            current_clause_id=next_clause["id"],
-            current_clause_title=next_clause["title"],
-            current_clause_text=next_clause["text"],
-            clause_index=self._current_clause_idx,
+            table_of_contents=toc,
+            active_view=active_view,
+            view_content=view_content,
+            flagged_issues=self._reviews,
+            steps_remaining=steps_left,
             total_clauses=len(self._clauses),
-            reviewed_clauses=self._reviews,
             task_id=self._state.task_id,
             task_description=self._contract["metadata"]["task_description"],
             message=" ".join(message_parts),
@@ -255,40 +269,25 @@ class ContractReviewEnvironment(Environment):
 
     @property
     def state(self) -> ContractState:
-        """Get the current environment state."""
         return self._state
 
     def get_last_grader_score(self) -> Optional[float]:
-        """Returns the grader score from the most recently completed episode across any session."""
         score = ContractReviewEnvironment._global_last_grader_score
         if score is None:
             return None
-        # Belt-and-suspenders clamp — never return exact 0.0 or 1.0
         return round(min(0.999, max(0.01, float(score))), 4)
 
-    def _format_full_contract(self) -> str:
-        """Format the entire contract as readable text."""
-        lines = [f"CONTRACT: {self._contract['title']}", "=" * 60, ""]
-        for clause in self._clauses:
-            lines.append(f"CLAUSE {clause['id'].upper()} — {clause['title']}")
-            lines.append("-" * 40)
-            lines.append(clause["text"])
-            lines.append("")
-        return "\n".join(lines)
-
     def _make_done_observation(self, message: str) -> ContractObservation:
-        """Return a done observation when the episode is already complete."""
         return ContractObservation(
             done=True,
-            reward=0.01,   # Strictly > 0 — validator checks all reward fields
+            reward=0.01,
             contract_title=self._contract["title"] if self._contract else "",
-            contract_text="",
-            current_clause_id="",
-            current_clause_title="",
-            current_clause_text="",
-            clause_index=len(self._clauses) - 1 if self._clauses else 0,
+            table_of_contents=[],
+            active_view="toc",
+            view_content="",
+            flagged_issues=self._reviews,
+            steps_remaining=0,
             total_clauses=len(self._clauses),
-            reviewed_clauses=self._reviews,
             task_id=self._state.task_id,
             task_description="",
             message=message,

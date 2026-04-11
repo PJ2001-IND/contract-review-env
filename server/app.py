@@ -268,25 +268,29 @@ async def web_ui():
   <h2>⚡ Submit Action</h2>
   <div class="grid">
     <div>
-      <label>Clause ID:</label>
-      <input id="clauseId" placeholder="e.g. c1, c2, c3" value="c1">
+      <label>Clause ID (e.g. c1):</label>
+      <input id="clauseId" placeholder="Skip if searching or finishing">
+      <label>Search Query (for search_contract):</label>
+      <input id="searchQuery" placeholder="Search keyword...">
       <label>Action Type:</label>
       <select id="actionType">
-        <option value="approve">✅ approve</option>
-        <option value="flag_risk">⚠️ flag_risk</option>
+        <option value="read_clause">📖 read_clause</option>
+        <option value="search_contract">🔍 search_contract</option>
+        <option value="flag_issue">⚠️ flag_issue</option>
         <option value="suggest_amendment">✏️ suggest_amendment</option>
+        <option value="finish_review">✅ finish_review</option>
       </select>
     </div>
     <div>
       <label>Severity (for flag/amend):</label>
       <select id="severity">
-        <option value="null">null (for approve)</option>
+        <option value="null">None</option>
         <option value="critical">🔴 critical</option>
         <option value="moderate">🟡 moderate</option>
         <option value="minor">🟢 minor</option>
       </select>
       <label>Reasoning:</label>
-      <input id="reasoning" placeholder="Explain your decision..." value="Clause appears standard and fair">
+      <input id="reasoning" placeholder="Explain your decision...">
     </div>
   </div>
   <label>Suggested Amendment (for suggest_amendment only):</label>
@@ -331,11 +335,15 @@ async function step() {
   const sevRaw = document.getElementById('severity').value;
   const sev = sevRaw === 'null' ? null : sevRaw;
   const txt = document.getElementById('suggestedText').value.trim() || null;
+  const cidRaw = document.getElementById('clauseId').value.trim();
+  const sqRaw = document.getElementById('searchQuery').value.trim();
   const body = {
     action: {
-      clause_id: document.getElementById('clauseId').value,
       action_type: document.getElementById('actionType').value,
-      severity: sev, reasoning: document.getElementById('reasoning').value,
+      clause_id: cidRaw ? cidRaw : null,
+      search_query: sqRaw ? sqRaw : null,
+      severity: sev,
+      reasoning: document.getElementById('reasoning').value || null,
       suggested_text: txt,
     }
   };

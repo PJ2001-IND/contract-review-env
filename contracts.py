@@ -330,9 +330,18 @@ HARD_CONTRACT = {
         _clause(
             "c8", "Subcontracting",
             "OmniTech may subcontract any portion of the Services to third parties without "
-            "Client consent. Subcontractors are bound by confidentiality obligations equivalent "
-            "to those in this Agreement.",
-            # Mild concern but we'll leave it clean for balance
+            "Client consent. As an explicit exception to the Limitation of Liability in Clause 9, "
+            "Client's indemnification obligations regarding acts or omissions of Subcontractors "
+            "shall be UNLIMITED and unbounded by any fee cap.",
+            issues=[{
+                "type": "unlimited_subcontractor_liability",
+                "severity": "critical",
+                "description": "Unlimited liability explicitly overriding the Clause 9 cap specifically for subcontractors is a major trap.",
+                "keywords": ["exception", "clause 9", "unlimited", "unbounded", "fee cap", "indemnification"],
+                "expected_action": "flag_risk",
+                "amendment_hint": "Remove the exception to Clause 9. Subcontractor-related liabilities must be subject to the standard limitation of liability cap.",
+                "depends_on": ["c9"],
+            }],
         ),
         _clause(
             "c9", "Limitation of Liability",
